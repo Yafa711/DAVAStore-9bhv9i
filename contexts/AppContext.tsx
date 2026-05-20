@@ -15,7 +15,7 @@ interface User {
 interface CartItem {
   productId: string;
   productName: string;
-  productNameEn: string;
+  productNameEn?: string;
   price: number;
   originalPrice?: number;
   image: string;
@@ -41,6 +41,7 @@ interface AppContextType {
   logout: () => void;
   favorites: string[];
   toggleFavorite: (productId: string) => void;
+  authLoading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -51,6 +52,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     loadStoredData();
@@ -58,19 +60,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadStoredData = async () => {
     try {
-      const [storedLang, storedUser, storedCart, storedSearch] = await Promise.all([
+      const [storedLang, storedUser, storedCart, storedSearch, storedFavs] = await Promise.all([
         AsyncStorage.getItem('dava_language'),
         AsyncStorage.getItem('dava_user'),
         AsyncStorage.getItem('dava_cart'),
         AsyncStorage.getItem('dava_search_history'),
+        AsyncStorage.getItem('dava_favorites'),
       ]);
-      const storedFavs = await AsyncStorage.getItem('dava_favorites');
       if (storedLang) setLanguageState(storedLang as Language);
       if (storedUser) setUserState(JSON.parse(storedUser));
       if (storedCart) setCart(JSON.parse(storedCart));
       if (storedSearch) setSearchHistory(JSON.parse(storedSearch));
       if (storedFavs) setFavorites(JSON.parse(storedFavs));
     } catch {}
+    finally {
+      setAuthLoading(false);
+    }
   };
 
   const setLanguage = async (lang: Language) => {
@@ -84,29 +89,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     else await AsyncStorage.removeItem('dava_user');
   };
 
-  const addToCart = async (item: CartItem) => {
+  const addToCart = (item: CartItem) => {
     setCart(prev => {
-      const existing = prev.find(i => 
+      const existing = prev.find(i =>
         i.productId === item.productId && i.size === item.size && i.color === item.color
       );
-      let updated: CartItem[];
-      if (existing) {
-        updated = prev.map(i =>
-          i.productId === item.productId && i.size === item.size && i.color === item.color
-            ? { ...i, quantity: i.quantity + item.quantity }
-            : i
-        );
-      } else {
-        updated = [...prev, item];
-      }
+      const updated = existing
+        ? prev.map(i =>
+            i.productId === item.productId && i.size === item.size && i.color === item.color
+              ? { ...i, quantity: i.quantity + item.quantity }
+              : i
+          )
+        : [...prev, item];
       AsyncStorage.setItem('dava_cart', JSON.stringify(updated));
       return updated;
     });
   };
 
-  const removeFromCart = async (productId: string, size: string, color: string) => {
+  const removeFromCart = (productId: string, size: string, color: string) => {
     setCart(prev => {
-      const updated = prev.filter(i => 
+      const updated = prev.filter(i =>
         !(i.productId === productId && i.size === size && i.color === color)
       );
       AsyncStorage.setItem('dava_cart', JSON.stringify(updated));
@@ -114,7 +116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const updateCartQuantity = async (productId: string, size: string, color: string, quantity: number) => {
+  const updateCartQuantity = (productId: string, size: string, color: string, quantity: number) => {
     setCart(prev => {
       const updated = quantity <= 0
         ? prev.filter(i => !(i.productId === productId && i.size === size && i.color === color))
@@ -128,12 +130,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const clearCart = async () => {
+  const clearCart = () => {
     setCart([]);
-    await AsyncStorage.removeItem('dava_cart');
+    AsyncStorage.removeItem('dava_cart');
   };
 
-  const addSearchHistory = async (query: string) => {
+  const addSearchHistory = (query: string) => {
     if (!query.trim()) return;
     setSearchHistory(prev => {
       const filtered = prev.filter(q => q !== query);
@@ -143,7 +145,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const toggleFavorite = async (productId: string) => {
+  const toggleFavorite = (productId: string) => {
     setFavorites(prev => {
       const updated = prev.includes(productId)
         ? prev.filter(id => id !== productId)
@@ -153,9 +155,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const logout = async () => {
+  const logout = () => {
     setUserState(null);
-    await AsyncStorage.removeItem('dava_user');
+    AsyncStorage.removeItem('dava_user');
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -170,6 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       searchHistory, addSearchHistory,
       logout,
       favorites, toggleFavorite,
+      authLoading,
     }}>
       {children}
     </AppContext.Provider>

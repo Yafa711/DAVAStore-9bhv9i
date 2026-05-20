@@ -1,51 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, KeyboardAvoidingView, Platform, Image,
+  ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Linking, Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 import { useData } from '@/contexts/DataContext';
 import { useAlert } from '@/template';
-import { t } from '@/constants/i18n';
+import { otpService, customersService, adminService } from '@/services/database';
+
+type Mode = 'login' | 'register';
 
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { language, setUser } = useApp();
+  const { setUser, language } = useApp();
   const { adminUsers } = useData();
   const { showAlert } = useAlert();
 
-  const [tab, setTab] = useState<'phone' | 'admin'>('phone');
+  const [mode, setMode] = useState<Mode>('login');
   const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handlePhoneLogin = () => {
-    const cleaned = phone.replace(/\s/g, '');
-    if (!cleaned || cleaned.length < 9 || !cleaned.startsWith('7')) {
+  const isRTL = language === 'ar';
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+  }, []);
+
+  // Validate Yemen phone format
+  const isValidPhone = (p: string) => /^7[0-9]{8}$/.test(p);
+
+  const handleCustomerAuth = async () => {
+    if (!isValidPhone(phone)) {
       showAlert(
-        language === 'ar' ? 'رقم غير صحيح' : 'Invalid Number',
-        language === 'ar' ? 'يجب أن يبدأ الرقم بـ 7 ويكون 9 أرقام' : 'Number must start with 7 and be 9 digits'
+        isRTL ? 'رقم غير صحيح' : 'Invalid Number',
+        isRTL ? 'يجب أن يبدأ الرقم بـ 7 ويتكون من 9 أرقام (مثال: 700000000)' : 'Number must start with 7 and be 9 digits (e.g. 700000000)'
       );
       return;
     }
-    router.push({ pathname: '/auth/verify', params: { phone: `+967${cleaned}`, mode: 'login' } });
+    if (mode === 'register' && !name.trim()) {
+      showAlert(isRTL ? 'أدخل اسمك' : 'Enter Name', '');
+      return;
+    }
+
+    const fullPhone = `+967${phone}`;
+
+    if (mode === 'login') {
+      // Check if user exists
+      setLoading(true);
+      const existing = await customersService.getByPhone(fullPhone);
+      setLoading(false);
+      if (!existing) {
+        showAlert(
+          isRTL ? 'الحساب غير موجود' : 'Account Not Found',
+          isRTL ? 'لا يوجد حساب بهذا الرقم. قم بإنشاء حساب جديد.' : 'No account with this number. Please register.',
+          [
+            { text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' },
+            { text: isRTL ? 'إنشاء حساب' : 'Register', onPress: () => setMode('register') },
+          ]
+        );
+        return;
+      }
+    }
+
+    // Generate and send OTP
+    setLoading(true);
+    try {
+      const otp = otpService.generateOTP();
+      await otpService.store(fullPhone, otp);
+
+      const adminPhone = '967782282586';
+      const msg = mode === 'register'
+        ? `🔐 كود تحقق DAVA\n\nالعميل الجديد: ${name}\nالرقم: ${fullPhone}\nالكود: ${otp}\n\n⚡ أرسل هذا الكود إلى العميل على رقم: ${fullPhone}\nصلاحيته 10 دقائق`
+        : `🔐 تسجيل دخول DAVA\n\nالرقم: ${fullPhone}\nكود الدخول: ${otp}\n\n⚡ أرسل هذا الكود إلى العميل على رقم: ${fullPhone}\nصلاحيته 10 دقائق`;
+
+      await Linking.openURL(`https://wa.me/${adminPhone}?text=${encodeURIComponent(msg)}`);
+
+      router.push({
+        pathname: '/auth/verify',
+        params: {
+          phone: fullPhone,
+          name: name || '',
+          mode,
+        },
+      });
+    } catch (e) {
+      showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل إرسال الكود' : 'Failed to send code');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAdminLogin = () => {
+  const handleAdminLogin = async () => {
+    if (!adminUsername.trim() || !adminPassword.trim()) {
+      showAlert(isRTL ? 'أدخل بيانات الدخول' : 'Enter credentials', '');
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      const admin = adminUsers.find(a => 
-        a.username === adminUsername && a.password === adminPassword && a.isActive
-      );
+    try {
+      const admin = await adminService.login(adminUsername.trim(), adminPassword);
       if (admin) {
         setUser({
           id: admin.id,
@@ -56,203 +121,294 @@ export default function LoginScreen() {
           permissions: admin.permissions,
           createdAt: admin.createdAt,
         });
-        router.replace('/(tabs)');
+        router.replace('/admin/index');
       } else {
         showAlert(
-          language === 'ar' ? 'خطأ في البيانات' : 'Invalid Credentials',
-          language === 'ar' ? 'اسم المستخدم أو كلمة المرور غير صحيحة' : 'Username or password is incorrect'
+          isRTL ? 'بيانات خاطئة' : 'Wrong Credentials',
+          isRTL ? 'اسم المستخدم أو كلمة المرور غير صحيحة' : 'Invalid username or password'
         );
       }
-    }, 800);
+    } catch {
+      showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل الاتصال بالخادم' : 'Server connection failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const isRTL = language === 'ar';
-
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <LinearGradient colors={['#1A1A1A', '#0A0A0A']} style={styles.logoBox}>
-            <Image source={require('@/assets/images/dava-logo.png')} style={styles.logo} resizeMode="contain" />
-          </LinearGradient>
-          <Text style={styles.appName}>DAVA</Text>
-          <Text style={styles.tagline}>{language === 'ar' ? 'أزياء وأناقة فاخرة' : 'Luxury Fashion & Style'}</Text>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'phone' && styles.activeTab]}
-            onPress={() => setTab('phone')}
-          >
-            <Text style={[styles.tabText, tab === 'phone' && styles.activeTabText]}>
-              {language === 'ar' ? 'تسجيل بالهاتف' : 'Phone Login'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'admin' && styles.activeTab]}
-            onPress={() => setTab('admin')}
-          >
-            <Text style={[styles.tabText, tab === 'admin' && styles.activeTabText]}>
-              {language === 'ar' ? 'دخول الإدارة' : 'Admin Login'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {tab === 'phone' ? (
-          <View style={styles.form}>
-            <Text style={[styles.label, isRTL && styles.rtlText]}>
-              {t('phone', language)}
-            </Text>
-            <View style={styles.phoneInputContainer}>
-              <View style={styles.countryCode}>
-                <Text style={styles.countryCodeText}>🇾🇪 +967</Text>
-              </View>
-              <TextInput
-                style={[styles.phoneInput, isRTL && { textAlign: 'right' }]}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder={t('phonePlaceholder', language)}
-                placeholderTextColor={Colors.textMuted}
-                keyboardType="phone-pad"
-                maxLength={9}
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <LinearGradient colors={['#050505', '#0A0A0A', '#111']} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+            {/* Logo */}
+            <View style={styles.logoSection}>
+              <Image
+                source={require('@/assets/images/dava-logo.png')}
+                style={styles.logo}
+                contentFit="contain"
+                transition={300}
               />
+              <Text style={styles.brandName}>DAVA</Text>
+              <Text style={styles.brandTagline}>
+                {isRTL ? 'أزياء فاخرة لكل إطلالة' : 'Luxury Fashion for Every Look'}
+              </Text>
             </View>
-            <Text style={styles.phoneHint}>
-              {language === 'ar' ? 'أدخل رقمك بدون رمز الدولة (يبدأ بـ 7)' : 'Enter number without country code (starts with 7)'}
-            </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={handlePhoneLogin}>
-              <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.btnGradient}>
-                <MaterialIcons name="send" size={18} color="#000" />
-                <Text style={styles.primaryBtnText}>{t('sendCode', language)}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{language === 'ar' ? 'أو' : 'or'}</Text>
-              <View style={styles.dividerLine} />
+
+            {/* Mode Toggle */}
+            {!isAdminLogin ? (
+              <View style={styles.modeToggle}>
+                <TouchableOpacity
+                  style={[styles.modeBtn, mode === 'login' && styles.activeModeBtn]}
+                  onPress={() => setMode('login')}
+                >
+                  <Text style={[styles.modeBtnText, mode === 'login' && styles.activeModeBtnText]}>
+                    {isRTL ? 'تسجيل دخول' : 'Login'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeBtn, mode === 'register' && styles.activeModeBtn]}
+                  onPress={() => setMode('register')}
+                >
+                  <Text style={[styles.modeBtnText, mode === 'register' && styles.activeModeBtnText]}>
+                    {isRTL ? 'حساب جديد' : 'Register'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={styles.card}>
+              {isAdminLogin ? (
+                <>
+                  <View style={styles.cardHeader}>
+                    <MaterialIcons name="admin-panel-settings" size={28} color={Colors.primary} />
+                    <Text style={styles.cardTitle}>
+                      {isRTL ? 'لوحة الإدارة' : 'Admin Panel'}
+                    </Text>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, isRTL && styles.rtlText]}>
+                      {isRTL ? 'اسم المستخدم' : 'Username'}
+                    </Text>
+                    <View style={styles.inputWrapper}>
+                      <MaterialIcons name="person" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                      <TextInput
+                        style={[styles.input, isRTL && styles.rtlInput]}
+                        value={adminUsername}
+                        onChangeText={setAdminUsername}
+                        placeholder="Abod#DAVA"
+                        placeholderTextColor={Colors.textMuted}
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, isRTL && styles.rtlText]}>
+                      {isRTL ? 'كلمة المرور' : 'Password'}
+                    </Text>
+                    <View style={styles.inputWrapper}>
+                      <MaterialIcons name="lock" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                      <TextInput
+                        style={[styles.input, isRTL && styles.rtlInput]}
+                        value={adminPassword}
+                        onChangeText={setAdminPassword}
+                        placeholder="••••••••"
+                        placeholderTextColor={Colors.textMuted}
+                        secureTextEntry
+                      />
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.submitBtn} onPress={handleAdminLogin} disabled={loading} activeOpacity={0.85}>
+                    <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.submitGradient}>
+                      {loading ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <>
+                          <MaterialIcons name="login" size={20} color="#000" />
+                          <Text style={styles.submitText}>{isRTL ? 'دخول' : 'Login'}</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={styles.cardHeader}>
+                    <MaterialIcons name="phone-android" size={28} color={Colors.primary} />
+                    <Text style={styles.cardTitle}>
+                      {mode === 'login'
+                        ? (isRTL ? 'تسجيل الدخول' : 'Sign In')
+                        : (isRTL ? 'إنشاء حساب جديد' : 'Create Account')}
+                    </Text>
+                  </View>
+
+                  {mode === 'register' ? (
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, isRTL && styles.rtlText]}>
+                        {isRTL ? 'الاسم الكامل' : 'Full Name'}
+                      </Text>
+                      <View style={styles.inputWrapper}>
+                        <MaterialIcons name="person" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, isRTL && styles.rtlInput]}
+                          value={name}
+                          onChangeText={setName}
+                          placeholder={isRTL ? 'أدخل اسمك الكامل' : 'Enter your full name'}
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, isRTL && styles.rtlText]}>
+                      {isRTL ? 'رقم الهاتف' : 'Phone Number'}
+                    </Text>
+                    <View style={styles.phoneRow}>
+                      <View style={styles.countryCode}>
+                        <Text style={styles.flag}>🇾🇪</Text>
+                        <Text style={styles.countryCodeText}>+967</Text>
+                      </View>
+                      <TextInput
+                        style={[styles.phoneInput, isRTL && styles.rtlInput]}
+                        value={phone}
+                        onChangeText={t => setPhone(t.replace(/[^0-9]/g, '').slice(0, 9))}
+                        placeholder="7XXXXXXXX"
+                        placeholderTextColor={Colors.textMuted}
+                        keyboardType="number-pad"
+                        maxLength={9}
+                      />
+                    </View>
+                    <Text style={[styles.inputHint, isRTL && styles.rtlText]}>
+                      {isRTL ? 'يجب أن يبدأ بـ 7 ويتكون من 9 أرقام' : 'Must start with 7 and be 9 digits'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.whatsappInfo}>
+                    <MaterialIcons name="info-outline" size={16} color={Colors.primary} />
+                    <Text style={[styles.whatsappInfoText, isRTL && styles.rtlText]}>
+                      {isRTL
+                        ? 'سيتم فتح واتساب لإرسال كود التحقق عبر المدير'
+                        : 'WhatsApp will open to send verification code via admin'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.submitBtn} onPress={handleCustomerAuth} disabled={loading} activeOpacity={0.85}>
+                    <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.submitGradient}>
+                      {loading ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <>
+                          <MaterialIcons name="send" size={20} color="#000" />
+                          <Text style={styles.submitText}>
+                            {isRTL ? 'إرسال كود التحقق' : 'Send Verification Code'}
+                          </Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/auth/register')}>
-              <Text style={styles.secondaryBtnText}>
-                {t('noAccount', language)} {' '}
-                <Text style={styles.linkText}>{t('register', language)}</Text>
+
+            {/* Toggle Admin/Customer */}
+            <TouchableOpacity
+              style={styles.toggleAdminBtn}
+              onPress={() => setIsAdminLogin(v => !v)}
+            >
+              <MaterialIcons
+                name={isAdminLogin ? 'person' : 'admin-panel-settings'}
+                size={16}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.toggleAdminText}>
+                {isAdminLogin
+                  ? (isRTL ? 'العودة لتسجيل دخول العملاء' : 'Back to Customer Login')
+                  : (isRTL ? 'دخول المدير / الإدارة' : 'Admin / Staff Login')}
               </Text>
             </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.form}>
-            <Text style={[styles.label, isRTL && styles.rtlText]}>
-              {language === 'ar' ? 'اسم المستخدم' : 'Username'}
-            </Text>
-            <TextInput
-              style={[styles.input, isRTL && styles.rtlInput]}
-              value={adminUsername}
-              onChangeText={setAdminUsername}
-              placeholder={language === 'ar' ? 'أدخل اسم المستخدم' : 'Enter username'}
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="none"
-            />
-            <Text style={[styles.label, isRTL && styles.rtlText, { marginTop: Spacing.md }]}>
-              {language === 'ar' ? 'كلمة المرور' : 'Password'}
-            </Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={[styles.passwordInput, isRTL && styles.rtlInput]}
-                value={adminPassword}
-                onChangeText={setAdminPassword}
-                placeholder={language === 'ar' ? 'أدخل كلمة المرور' : 'Enter password'}
-                placeholderTextColor={Colors.textMuted}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={handleAdminLogin}
-              disabled={loading}
-            >
-              <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.btnGradient}>
-                <MaterialIcons name="admin-panel-settings" size={18} color="#000" />
-                <Text style={styles.primaryBtnText}>
-                  {loading ? (language === 'ar' ? 'جاري الدخول...' : 'Logging in...') : (language === 'ar' ? 'دخول لوحة الإدارة' : 'Admin Login')}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+          </Animated.View>
+        </ScrollView>
+      </LinearGradient>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingHorizontal: Spacing.lg, alignItems: 'center' },
-  logoContainer: { alignItems: 'center', marginBottom: Spacing.xl },
-  logoBox: {
-    width: 100, height: 100, borderRadius: Radius.xl,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.borderGold,
+  scroll: { flexGrow: 1 },
+  container: { flex: 1, paddingHorizontal: Spacing.lg },
+  logoSection: { alignItems: 'center', marginBottom: Spacing.xl },
+  logo: { width: 90, height: 90, marginBottom: 8 },
+  brandName: {
+    fontSize: 40, fontWeight: FontWeight.extrabold,
+    color: Colors.primary, letterSpacing: 8,
   },
-  logo: { width: 80, height: 80 },
-  appName: {
-    fontSize: FontSize.display, fontWeight: FontWeight.extrabold,
-    color: Colors.primary, letterSpacing: 6, marginTop: Spacing.sm,
+  brandTagline: { fontSize: FontSize.sm, color: Colors.textSecondary, letterSpacing: 1, marginTop: 4 },
+  modeToggle: {
+    flexDirection: 'row', backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg, padding: 4, marginBottom: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  tagline: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
-  tabContainer: {
-    flexDirection: 'row', width: '100%',
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
-    padding: 4, marginBottom: Spacing.xl,
+  modeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: Radius.md },
+  activeModeBtn: { backgroundColor: Colors.primary },
+  modeBtnText: { fontSize: FontSize.base, color: Colors.textMuted, fontWeight: FontWeight.medium },
+  activeModeBtnText: { color: '#000', fontWeight: FontWeight.bold },
+  card: {
+    backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.borderGold, gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: Radius.md, alignItems: 'center' },
-  activeTab: { backgroundColor: Colors.primary },
-  tabText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-  activeTabText: { color: '#000', fontWeight: FontWeight.bold },
-  form: { width: '100%' },
-  label: { fontSize: FontSize.base, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  cardTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  inputGroup: { gap: 6 },
+  inputLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
   rtlText: { textAlign: 'right' },
-  phoneInputContainer: {
-    flexDirection: 'row', borderWidth: 1, borderColor: Colors.border,
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
+    backgroundColor: Colors.bgInput, overflow: 'hidden',
+  },
+  inputIcon: { paddingHorizontal: 12 },
+  input: {
+    flex: 1, paddingVertical: 14, paddingRight: 12,
+    fontSize: FontSize.base, color: Colors.textPrimary,
+  },
+  rtlInput: { textAlign: 'right' },
+  phoneRow: {
+    flexDirection: 'row', borderWidth: 1.5, borderColor: Colors.border,
     borderRadius: Radius.md, backgroundColor: Colors.bgInput, overflow: 'hidden',
   },
   countryCode: {
-    paddingHorizontal: Spacing.md, justifyContent: 'center',
-    backgroundColor: Colors.bgCard, borderRightWidth: 1, borderRightColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 14,
+    borderRightWidth: 1, borderRightColor: Colors.border,
+    backgroundColor: Colors.bgSurface,
   },
-  countryCodeText: { fontSize: FontSize.base, color: Colors.textPrimary, fontWeight: FontWeight.medium },
+  flag: { fontSize: 18 },
+  countryCodeText: { fontSize: FontSize.base, color: Colors.primary, fontWeight: FontWeight.bold },
   phoneInput: {
-    flex: 1, paddingHorizontal: Spacing.md, paddingVertical: 14,
-    fontSize: FontSize.md, color: Colors.textPrimary,
+    flex: 1, paddingHorizontal: 12, paddingVertical: 14,
+    fontSize: FontSize.lg, color: Colors.textPrimary, letterSpacing: 2,
   },
-  phoneHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 6, textAlign: 'right' },
-  input: {
-    borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md,
-    backgroundColor: Colors.bgInput, paddingHorizontal: Spacing.md, paddingVertical: 14,
-    fontSize: FontSize.md, color: Colors.textPrimary,
+  inputHint: { fontSize: FontSize.xs, color: Colors.textMuted },
+  whatsappInfo: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: Colors.primary + '11', borderRadius: Radius.md,
+    padding: Spacing.sm, borderWidth: 1, borderColor: Colors.borderGold,
   },
-  rtlInput: { textAlign: 'right' },
-  passwordContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, backgroundColor: Colors.bgInput },
-  passwordInput: { flex: 1, paddingHorizontal: Spacing.md, paddingVertical: 14, fontSize: FontSize.md, color: Colors.textPrimary },
-  eyeBtn: { padding: Spacing.md },
-  primaryBtn: { marginTop: Spacing.xl, borderRadius: Radius.md, overflow: 'hidden' },
-  btnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
-  primaryBtnText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#000' },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.lg, gap: Spacing.sm },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { fontSize: FontSize.sm, color: Colors.textMuted },
-  secondaryBtn: { alignItems: 'center' },
-  secondaryBtnText: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  linkText: { color: Colors.primary, fontWeight: FontWeight.semibold },
+  whatsappInfoText: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18 },
+  submitBtn: { borderRadius: Radius.md, overflow: 'hidden', marginTop: 4 },
+  submitGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 16, gap: 8,
+  },
+  submitText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#000' },
+  toggleAdminBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: Spacing.sm,
+  },
+  toggleAdminText: { fontSize: FontSize.sm, color: Colors.textMuted },
 });

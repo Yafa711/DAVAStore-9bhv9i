@@ -1,31 +1,23 @@
-import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import React from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { Redirect } from 'expo-router';
 import { useApp } from '@/contexts/AppContext';
 import { Colors } from '@/constants/theme';
 
-export default function SplashScreen() {
-  const router = useRouter();
-  const { user } = useApp();
+export default function IndexScreen() {
+  const { user, authLoading } = useApp();
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (user) {
-        if (user.isAdmin || user.isSuperAdmin) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/(tabs)');
-        }
-      } else {
-        router.replace('/auth/login');
-      }
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [user]);
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+      </View>
+    );
+  }
 
-  return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color={Colors.primary} />
-    </View>
-  );
+  if (!user) {
+    return <Redirect href="/auth/login" />;
+  }
+
+  return <Redirect href="/(tabs)" />;
 }

@@ -39,8 +39,8 @@ export default function CheckoutScreen() {
   const selectedBank = activeBanks.find(b => b.id === selectedPayment);
   const total = cartTotal + deliveryFee - couponDiscount;
 
-  const handleApplyCoupon = () => {
-    const coupon = validateCoupon(couponCode, cartTotal);
+  const handleApplyCoupon = async () => {
+    const coupon = await validateCoupon(couponCode, cartTotal);
     if (coupon) {
       const discount = coupon.type === 'percent'
         ? Math.round(cartTotal * coupon.discount / 100)

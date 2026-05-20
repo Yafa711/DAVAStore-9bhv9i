@@ -13,9 +13,16 @@ export default function AdminOrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { language } = useApp();
-  const { orders, updateOrder, settings } = useData();
+  const { orders, updateOrder, settings, refreshOrders } = useData();
   const { showAlert } = useAlert();
   const [filter, setFilter] = useState('all');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshOrders();
+    setRefreshing(false);
+  };
 
   const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter || o.paymentStatus === filter);
   const sorted = [...filtered].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -139,6 +146,8 @@ export default function AdminOrdersScreen() {
         keyExtractor={i => i.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
         ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>{language === 'ar' ? 'لا توجد طلبات' : 'No orders'}</Text></View>}
       />
     </View>

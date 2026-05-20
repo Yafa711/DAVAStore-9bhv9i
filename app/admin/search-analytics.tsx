@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -12,8 +12,20 @@ export default function SearchAnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const { language } = useApp();
   const { getSearchAnalytics } = useData();
+  const [analytics, setAnalytics] = useState<{ query: string; count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const analytics = getSearchAnalytics();
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  const loadAnalytics = async () => {
+    setLoading(true);
+    const data = await getSearchAnalytics();
+    setAnalytics(data);
+    setLoading(false);
+  };
+
   const maxCount = analytics[0]?.count || 1;
 
   return (
@@ -21,7 +33,9 @@ export default function SearchAnalyticsScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={24} color={Colors.textPrimary} /></TouchableOpacity>
         <Text style={styles.headerTitle}>{language === 'ar' ? 'تحليل البحث' : 'Search Analytics'}</Text>
-        <Text style={styles.count}>{analytics.length}</Text>
+        <TouchableOpacity onPress={loadAnalytics}>
+          <MaterialIcons name="refresh" size={22} color={Colors.primary} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.summary}>
@@ -30,34 +44,40 @@ export default function SearchAnalyticsScreen() {
         </Text>
       </View>
 
-      <FlatList
-        data={analytics}
-        keyExtractor={(_, idx) => String(idx)}
-        contentContainerStyle={styles.list}
-        renderItem={({ item, index }) => (
-          <View style={styles.analyticsRow}>
-            <View style={[styles.rankBadge, { backgroundColor: index < 3 ? Colors.primary : Colors.bgSurface }]}>
-              <Text style={[styles.rankText, { color: index < 3 ? '#000' : Colors.textMuted }]}>{index + 1}</Text>
-            </View>
-            <View style={styles.queryInfo}>
-              <Text style={styles.queryText}>{item.query}</Text>
-              <View style={styles.barContainer}>
-                <View style={[styles.barFill, { width: `${(item.count / maxCount) * 100}%` }]} />
+      {loading ? (
+        <View style={styles.loadingCenter}>
+          <ActivityIndicator color={Colors.primary} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={analytics}
+          keyExtractor={(_, idx) => String(idx)}
+          contentContainerStyle={styles.list}
+          renderItem={({ item, index }) => (
+            <View style={styles.analyticsRow}>
+              <View style={[styles.rankBadge, { backgroundColor: index < 3 ? Colors.primary : Colors.bgSurface }]}>
+                <Text style={[styles.rankText, { color: index < 3 ? '#000' : Colors.textMuted }]}>{index + 1}</Text>
+              </View>
+              <View style={styles.queryInfo}>
+                <Text style={styles.queryText}>{item.query}</Text>
+                <View style={styles.barContainer}>
+                  <View style={[styles.barFill, { width: `${(item.count / maxCount) * 100}%` as any }]} />
+                </View>
+              </View>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{item.count}</Text>
+                <Text style={styles.countLabel}>{language === 'ar' ? 'مرة' : 'times'}</Text>
               </View>
             </View>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{item.count}</Text>
-              <Text style={styles.countLabel}>{language === 'ar' ? 'مرة' : 'times'}</Text>
+          )}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <MaterialIcons name="search" size={60} color={Colors.textMuted} />
+              <Text style={styles.emptyText}>{language === 'ar' ? 'لا توجد بيانات بحث بعد' : 'No search data yet'}</Text>
             </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <MaterialIcons name="search" size={60} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>{language === 'ar' ? 'لا توجد بيانات بحث بعد' : 'No search data yet'}</Text>
-          </View>
-        }
-      />
+          }
+        />
+      )}
     </View>
   );
 }
@@ -66,9 +86,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
   headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  count: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
   summary: { padding: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
   summaryText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  loadingCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: Spacing.md, gap: 8 },
   analyticsRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
   rankBadge: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
