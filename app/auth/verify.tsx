@@ -10,8 +10,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
-import { useAlert } from '@/template';
-import { otpService, customersService } from '@/services/database';
+import { useAlert, useAuth } from '@/template';
+import { customersService } from '@/services/database';
 
 export default function VerifyScreen() {
   const router = useRouter();
@@ -19,6 +19,7 @@ export default function VerifyScreen() {
   const params = useLocalSearchParams<{ email: string; name: string; mode: string }>();
   const { setUser, language } = useApp();
   const { showAlert } = useAlert();
+  const { verifyOTPAndLogin, sendOTP } = useAuth();
 
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,7 @@ export default function VerifyScreen() {
 
   const startTimer = () => {
     setTimer(600);
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimer(t => {
         if (t <= 1) { if (timerRef.current) clearInterval(timerRef.current); return 0; }
@@ -56,22 +58,24 @@ export default function VerifyScreen() {
     }
     setLoading(true);
     try {
-      const valid = await otpService.verifyByEmail(email, otp);
-      if (!valid) {
+      // Use Supabase built-in OTP verification
+      const { error, user: authUser } = await verifyOTPAndLogin(email, otp);
+      if (error) {
         showAlert(
           isRTL ? 'كود خاطئ' : 'Wrong Code',
-          isRTL ? 'الكود غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'
+          isRTL ? 'الكود غير صحيح أو منتهي الصلاحية. تحقق من بريدك وأعد المحاولة.' : 'Invalid or expired code. Check your email and try again.'
         );
         return;
       }
 
+      // Create or fetch customer profile
       let customer = await customersService.getByEmail(email);
       if (!customer && mode === 'register') {
-        customer = await customersService.createByEmail({ name, email });
+        customer = await customersService.createByEmail({ name: name || email.split('@')[0], email });
       }
       if (!customer) {
-        showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'لم يتم العثور على الحساب' : 'Account not found');
-        return;
+        // Auto-create on login if doesn't exist
+        customer = await customersService.createByEmail({ name: email.split('@')[0], email });
       }
 
       setUser({
@@ -85,7 +89,7 @@ export default function VerifyScreen() {
         createdAt: customer.created_at,
       });
       router.replace('/(tabs)');
-    } catch (e) {
+    } catch (e: any) {
       showAlert(isRTL ? 'خطأ' : 'Error', isRTL ? 'فشل التحقق' : 'Verification failed');
     } finally {
       setLoading(false);
@@ -93,13 +97,17 @@ export default function VerifyScreen() {
   };
 
   const handleResend = async () => {
+    if (timer > 540) return;
     setLoading(true);
     try {
-      const newOtp = otpService.generateOTP();
-      await otpService.storeByEmail(email, newOtp);
+      const { error } = await sendOTP(email);
+      if (error) {
+        showAlert(isRTL ? 'خطأ' : 'Error', error);
+        return;
+      }
       showAlert(
-        isRTL ? 'كود جديد' : 'New Code',
-        isRTL ? `الكود الجديد: ${newOtp}` : `New code: ${newOtp}`
+        isRTL ? 'تم الإرسال' : 'Sent',
+        isRTL ? 'تم إرسال كود جديد إلى بريدك الإلكتروني' : 'A new code has been sent to your email'
       );
       startTimer();
     } catch {
@@ -129,15 +137,17 @@ export default function VerifyScreen() {
 
             <Text style={styles.title}>{isRTL ? 'تحقق من بريدك' : 'Check Your Email'}</Text>
             <Text style={styles.sub}>
-              {isRTL ? `أرسلنا كود التحقق إلى\n${masked}` : `We sent a verification code to\n${masked}`}
+              {isRTL
+                ? `أرسلنا كود التحقق المكون من 6 أرقام إلى\n${masked}`
+                : `We sent a 6-digit verification code to\n${masked}`}
             </Text>
 
             <View style={styles.noteBox}>
               <MaterialIcons name="info" size={16} color={Colors.primary} />
               <Text style={[styles.noteText, isRTL && styles.rtl]}>
                 {isRTL
-                  ? 'تحقق من صندوق الوارد أو البريد المزعج'
-                  : 'Check your inbox or spam folder'}
+                  ? 'الكود مرسل من Supabase — تحقق من صندوق الوارد أو مجلد البريد المزعج'
+                  : 'Code sent via Supabase — check your inbox or spam folder'}
               </Text>
             </View>
 
@@ -173,12 +183,18 @@ export default function VerifyScreen() {
               disabled={loading || otp.length < 6}
             >
               <LinearGradient
-                colors={otp.length < 6 ? ['#1C3527', '#1C3527'] : [Colors.primaryLight, Colors.primary, Colors.primaryDark]}
+                colors={otp.length < 6
+                  ? ['#1C3527', '#1C3527']
+                  : [Colors.primaryLight, Colors.primary, Colors.primaryDark]}
                 style={styles.verifyGrad}
               >
                 {loading ? <ActivityIndicator color="#0D1E16" /> : (
                   <>
-                    <MaterialIcons name="check-circle" size={18} color={otp.length < 6 ? Colors.textMuted : '#0D1E16'} />
+                    <MaterialIcons
+                      name="check-circle"
+                      size={18}
+                      color={otp.length < 6 ? Colors.textMuted : '#0D1E16'}
+                    />
                     <Text style={[styles.verifyText, { color: otp.length < 6 ? Colors.textMuted : '#0D1E16' }]}>
                       {isRTL ? 'تحقق وادخل' : 'Verify & Enter'}
                     </Text>
@@ -192,6 +208,7 @@ export default function VerifyScreen() {
               <TouchableOpacity onPress={handleResend} disabled={timer > 540 || loading}>
                 <Text style={[styles.resendBtn, (timer > 540 || loading) && { color: Colors.textMuted }]}>
                   {isRTL ? 'إعادة الإرسال' : 'Resend'}
+                  {timer > 0 && timer <= 540 ? '' : timer > 540 ? ` (${fmt(timer - 540)})` : ''}
                 </Text>
               </TouchableOpacity>
             </View>

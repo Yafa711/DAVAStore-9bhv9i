@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Linking,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, AppState,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -11,22 +10,100 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 import { useData } from '@/contexts/DataContext';
+import { useAlert } from '@/template';
 import { ORDER_STATUSES } from '@/constants/config';
+
+const POLL_INTERVAL = 30000; // 30 seconds
 
 export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { language, user } = useApp();
-  const { orders } = useData();
+  const { orders, refreshOrders } = useData();
+  const { showAlert } = useAlert();
 
   const isRTL = language === 'ar';
-  const myOrders = user ? orders.filter(o => o.userId === user.id).sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  ) : [];
+  const prevOrdersRef = useRef<typeof orders>([]);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateRef = useRef(AppState.currentState);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  const myOrders = user
+    ? orders.filter(o => o.userId === user.id).sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    : [];
+
+  // ── Polling ──────────────────────────────────────────────
+  const checkForUpdates = async () => {
+    try {
+      const prevOrders = prevOrdersRef.current;
+      await refreshOrders();
+      setLastUpdated(new Date());
+
+      // Detect status changes
+      const currentMyOrders = prevOrders.filter(o => o.userId === user?.id);
+      currentMyOrders.forEach(prev => {
+        const updated = orders.find(o => o.id === prev.id);
+        if (updated && updated.status !== prev.status) {
+          const st = ORDER_STATUSES.find(s => s.id === updated.status);
+          showAlert(
+            isRTL ? '🔔 تحديث طلبك' : '🔔 Order Update',
+            isRTL
+              ? `طلبك #${updated.orderNumber} أصبح: ${st?.nameAr || updated.status}`
+              : `Order #${updated.orderNumber} is now: ${st?.nameEn || updated.status}`
+          );
+        }
+      });
+    } catch {
+      // Silent fail
+    }
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    intervalRef.current = setInterval(checkForUpdates, POLL_INTERVAL);
+  };
+
+  const stopPolling = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      startPolling();
+    }
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active' && appStateRef.current !== 'active' && user) {
+        checkForUpdates();
+        startPolling();
+      } else if (state !== 'active') {
+        stopPolling();
+      }
+      appStateRef.current = state;
+    });
+    return () => {
+      stopPolling();
+      sub.remove();
+    };
+  }, [user]);
+
+  // Track previous orders for comparison
+  useEffect(() => {
+    prevOrdersRef.current = orders;
+  }, [orders]);
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await checkForUpdates();
+    setRefreshing(false);
+  };
 
   const getStatus = (id: string) => ORDER_STATUSES.find(s => s.id === id) || ORDER_STATUSES[0];
-
-  const handleTrack = () => router.push('/track/index');
 
   const renderOrder = ({ item }: any) => {
     const st = getStatus(item.status);
@@ -73,12 +150,14 @@ export default function OrdersScreen() {
               color={item.paymentStatus === 'paid' ? Colors.success : Colors.warning}
             />
             <Text style={[styles.payTxt, { color: item.paymentStatus === 'paid' ? Colors.success : Colors.warning }]}>
-              {item.paymentStatus === 'paid' ? (isRTL ? 'مدفوع' : 'Paid') : (isRTL ? 'قيد المراجعة' : 'Pending')}
+              {item.paymentStatus === 'paid'
+                ? (isRTL ? 'مدفوع' : 'Paid')
+                : (isRTL ? 'قيد المراجعة' : 'Pending')}
             </Text>
           </View>
         </View>
 
-        {/* Timeline */}
+        {/* Status Timeline */}
         <View style={styles.timeline}>
           {ORDER_STATUSES.filter(s => s.id !== 'cancelled').map((s, idx, arr) => {
             const statusIdx = arr.findIndex(x => x.id === item.status);
@@ -108,11 +187,32 @@ export default function OrdersScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <LinearGradient colors={['#152A1E', '#0D1E16']} style={styles.header}>
         <Text style={styles.headerTitle}>{isRTL ? 'طلباتي' : 'My Orders'}</Text>
-        <TouchableOpacity style={styles.trackBtn} onPress={handleTrack}>
-          <MaterialIcons name="my-location" size={16} color="#0D1E16" />
-          <Text style={styles.trackBtnTxt}>{isRTL ? 'تتبع طلب' : 'Track'}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.refreshBtn} onPress={handleManualRefresh} disabled={refreshing}>
+            <MaterialIcons
+              name="refresh"
+              size={16}
+              color={refreshing ? Colors.textMuted : Colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.trackBtn} onPress={() => router.push('/track/index')}>
+            <MaterialIcons name="my-location" size={16} color="#0D1E16" />
+            <Text style={styles.trackBtnTxt}>{isRTL ? 'تتبع طلب' : 'Track'}</Text>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
+
+      {/* Polling indicator */}
+      {user ? (
+        <View style={styles.pollBar}>
+          <MaterialIcons name="sync" size={12} color={Colors.textMuted} />
+          <Text style={styles.pollTxt}>
+            {isRTL
+              ? `آخر تحديث: ${lastUpdated.toLocaleTimeString('ar')} • يتحدث كل 30 ثانية`
+              : `Last sync: ${lastUpdated.toLocaleTimeString()} • Updates every 30s`}
+          </Text>
+        </View>
+      ) : null}
 
       {!user ? (
         <View style={styles.empty}>
@@ -141,6 +241,8 @@ export default function OrdersScreen() {
           contentContainerStyle={styles.list}
           renderItem={renderOrder}
           showsVerticalScrollIndicator={false}
+          onRefresh={handleManualRefresh}
+          refreshing={refreshing}
         />
       )}
     </View>
@@ -154,11 +256,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
   },
   headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  refreshBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border,
+    justifyContent: 'center', alignItems: 'center',
+  },
   trackBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8,
   },
   trackBtnTxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  pollBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: Spacing.lg, paddingVertical: 5,
+    backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  pollTxt: { fontSize: 10, color: Colors.textMuted },
   list: { padding: Spacing.md, gap: Spacing.md, paddingBottom: 30 },
   orderCard: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Spacing.md,

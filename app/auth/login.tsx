@@ -11,8 +11,8 @@ import { Image } from 'expo-image';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 import { useAlert } from '@/template';
-import { adminService, customersService, otpService } from '@/services/database';
-import { getSupabaseClient } from '@/template';
+import { useAuth } from '@/template';
+import { adminService, customersService } from '@/services/database';
 
 type Mode = 'login' | 'register';
 type AuthTab = 'customer' | 'admin';
@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { setUser, language } = useApp();
   const { showAlert } = useAlert();
+  const { sendOTP } = useAuth();
 
   const [tab, setTab] = useState<AuthTab>('customer');
   const [mode, setMode] = useState<Mode>('login');
@@ -73,32 +74,22 @@ export default function LoginScreen() {
           return;
         }
       }
-      // Generate and store OTP
-      const otp = otpService.generateOTP();
-      await otpService.storeByEmail(email.toLowerCase().trim(), otp);
 
-      // Send via Supabase email (magic link / OTP)
-      const supabase = getSupabaseClient();
-      await supabase.auth.signInWithOtp({
-        email: email.toLowerCase().trim(),
-        options: {
-          shouldCreateUser: false,
-          data: { dava_otp: otp },
-        },
-      });
+      // Use Supabase built-in OTP — sends a real 6-digit code to the user's email
+      const { error } = await sendOTP(email.toLowerCase().trim());
+      if (error) {
+        showAlert(
+          isRTL ? 'خطأ في الإرسال' : 'Send Error',
+          isRTL ? `فشل إرسال الكود: ${error}` : `Failed to send code: ${error}`
+        );
+        return;
+      }
 
-      router.push({
-        pathname: '/auth/verify',
-        params: { email: email.toLowerCase().trim(), name: name || '', mode },
-      });
-    } catch (e: any) {
-      // Fallback: just store OTP locally and send via custom method
-      const otp = otpService.generateOTP();
-      await otpService.storeByEmail(email.toLowerCase().trim(), otp);
-      // Show OTP to user for testing (in production connect SMTP)
       showAlert(
-        isRTL ? 'كود التحقق' : 'Verification Code',
-        isRTL ? `كودك هو: ${otp}\n(في الإنتاج سيُرسل للبريد الإلكتروني)` : `Your code: ${otp}\n(In production this will be emailed)`,
+        isRTL ? 'تم إرسال الكود' : 'Code Sent',
+        isRTL
+          ? 'تم إرسال كود التحقق إلى بريدك الإلكتروني. تحقق من صندوق الوارد أو البريد المزعج.'
+          : 'Verification code sent to your email. Check your inbox or spam folder.',
         [{
           text: isRTL ? 'متابعة' : 'Continue',
           onPress: () => router.push({
@@ -107,6 +98,8 @@ export default function LoginScreen() {
           }),
         }]
       );
+    } catch (e: any) {
+      showAlert(isRTL ? 'خطأ' : 'Error', e?.message || '');
     } finally {
       setLoading(false);
     }
@@ -162,6 +155,7 @@ export default function LoginScreen() {
                 contentFit="contain"
                 transition={400}
               />
+              <Text style={styles.brandName}>DAVA</Text>
               <Text style={styles.tagline}>
                 {isRTL ? 'أزياء فاخرة لكل إطلالة' : 'Luxury Fashion for Every Look'}
               </Text>
@@ -169,47 +163,43 @@ export default function LoginScreen() {
 
             {/* Tab Switcher */}
             <View style={styles.tabRow}>
-              <TouchableOpacity
-                style={[styles.tabBtn, tab === 'customer' && styles.tabBtnActive]}
-                onPress={() => setTab('customer')}
-              >
-                <MaterialIcons name="person" size={16} color={tab === 'customer' ? '#0D1E16' : Colors.textMuted} />
-                <Text style={[styles.tabBtnText, tab === 'customer' && styles.tabBtnTextActive]}>
-                  {isRTL ? 'تسجيل العملاء' : 'Customer'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tabBtn, tab === 'admin' && styles.tabBtnActive]}
-                onPress={() => setTab('admin')}
-              >
-                <MaterialIcons name="admin-panel-settings" size={16} color={tab === 'admin' ? '#0D1E16' : Colors.textMuted} />
-                <Text style={[styles.tabBtnText, tab === 'admin' && styles.tabBtnTextActive]}>
-                  {isRTL ? 'لوحة الإدارة' : 'Admin'}
-                </Text>
-              </TouchableOpacity>
+              {(['customer', 'admin'] as AuthTab[]).map(t => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
+                  onPress={() => setTab(t)}
+                >
+                  <MaterialIcons
+                    name={t === 'customer' ? 'person' : 'admin-panel-settings'}
+                    size={16}
+                    color={tab === t ? '#0D1E16' : Colors.textMuted}
+                  />
+                  <Text style={[styles.tabBtnText, tab === t && styles.tabBtnTextActive]}>
+                    {t === 'customer'
+                      ? (isRTL ? 'تسجيل العملاء' : 'Customer')
+                      : (isRTL ? 'لوحة الإدارة' : 'Admin')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            {/* Customer Auth */}
+            {/* ── Customer Auth ── */}
             {tab === 'customer' ? (
               <View style={styles.card}>
-                {/* Mode Toggle */}
                 <View style={styles.modeRow}>
-                  <TouchableOpacity
-                    style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-                    onPress={() => setMode('login')}
-                  >
-                    <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]}>
-                      {isRTL ? 'تسجيل الدخول' : 'Sign In'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modeBtn, mode === 'register' && styles.modeBtnActive]}
-                    onPress={() => setMode('register')}
-                  >
-                    <Text style={[styles.modeBtnText, mode === 'register' && styles.modeBtnTextActive]}>
-                      {isRTL ? 'حساب جديد' : 'Register'}
-                    </Text>
-                  </TouchableOpacity>
+                  {(['login', 'register'] as Mode[]).map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+                      onPress={() => setMode(m)}
+                    >
+                      <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
+                        {m === 'login'
+                          ? (isRTL ? 'تسجيل الدخول' : 'Sign In')
+                          : (isRTL ? 'حساب جديد' : 'Register')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
 
                 {mode === 'register' ? (
@@ -248,16 +238,19 @@ export default function LoginScreen() {
                 </View>
 
                 <View style={styles.infoBox}>
-                  <MaterialIcons name="info-outline" size={15} color={Colors.primary} />
+                  <MaterialIcons name="mark-email-read" size={16} color={Colors.primary} />
                   <Text style={[styles.infoText, isRTL && styles.rtl]}>
                     {isRTL
-                      ? 'سيتم إرسال كود التحقق إلى بريدك الإلكتروني'
-                      : 'A verification code will be sent to your email'}
+                      ? 'سيتم إرسال كود التحقق المكون من 6 أرقام مباشرةً إلى بريدك الإلكتروني'
+                      : 'A 6-digit verification code will be sent directly to your email'}
                   </Text>
                 </View>
 
                 <TouchableOpacity style={styles.submitBtn} onPress={handleEmailAuth} disabled={loading}>
-                  <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.submitGrad}>
+                  <LinearGradient
+                    colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]}
+                    style={styles.submitGrad}
+                  >
                     {loading ? <ActivityIndicator color="#0D1E16" /> : (
                       <>
                         <MaterialIcons name="send" size={18} color="#0D1E16" />
@@ -270,15 +263,20 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              /* Admin Auth */
+              /* ── Admin Auth ── */
               <View style={styles.card}>
                 <View style={styles.adminHeader}>
                   <LinearGradient colors={[Colors.primaryDark, Colors.primary]} style={styles.adminIconBg}>
                     <MaterialIcons name="shield" size={24} color="#0D1E16" />
                   </LinearGradient>
-                  <Text style={[styles.cardTitle, isRTL && styles.rtl]}>
-                    {isRTL ? 'دخول الإدارة' : 'Admin Access'}
-                  </Text>
+                  <View>
+                    <Text style={[styles.cardTitle, isRTL && styles.rtl]}>
+                      {isRTL ? 'دخول الإدارة' : 'Admin Access'}
+                    </Text>
+                    <Text style={[styles.cardSub, isRTL && styles.rtl]}>
+                      {isRTL ? 'للمدير والفريق الإداري فقط' : 'Admins & management team only'}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.field}>
@@ -312,7 +310,10 @@ export default function LoginScreen() {
                 </View>
 
                 <TouchableOpacity style={styles.submitBtn} onPress={handleAdminLogin} disabled={loading}>
-                  <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.submitGrad}>
+                  <LinearGradient
+                    colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]}
+                    style={styles.submitGrad}
+                  >
                     {loading ? <ActivityIndicator color="#0D1E16" /> : (
                       <>
                         <MaterialIcons name="login" size={18} color="#0D1E16" />
@@ -332,8 +333,9 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Spacing.lg },
-  logoSection: { alignItems: 'center', marginBottom: Spacing.xl, gap: 8 },
+  logoSection: { alignItems: 'center', marginBottom: Spacing.xl, gap: 6 },
   logo: { width: 100, height: 100, borderRadius: 22 },
+  brandName: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 6 },
   tagline: { fontSize: FontSize.sm, color: Colors.textMuted, letterSpacing: 1, textAlign: 'center' },
   tabRow: {
     flexDirection: 'row', backgroundColor: Colors.bgCard,
@@ -365,13 +367,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgInput,
   },
   inputIcon: { paddingHorizontal: 12 },
-  input: {
-    flex: 1, paddingVertical: 13, paddingRight: 12,
-    fontSize: FontSize.base, color: Colors.textPrimary,
-  },
+  input: { flex: 1, paddingVertical: 13, paddingRight: 12, fontSize: FontSize.base, color: Colors.textPrimary },
   infoBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
-    backgroundColor: Colors.primary + '12', borderRadius: Radius.md,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: Colors.primary + '15', borderRadius: Radius.md,
     padding: Spacing.sm, borderWidth: 1, borderColor: Colors.borderGold,
   },
   infoText: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18 },
@@ -384,4 +383,5 @@ const styles = StyleSheet.create({
   adminHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
   adminIconBg: { width: 44, height: 44, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center' },
   cardTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  cardSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 });
