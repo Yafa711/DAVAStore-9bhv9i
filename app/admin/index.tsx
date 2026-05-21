@@ -1,144 +1,128 @@
 import React from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
+import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 import { useData } from '@/contexts/DataContext';
-import { useAlert } from '@/template';
-import { t } from '@/constants/i18n';
-import { ADMIN_PERMISSIONS } from '@/constants/config';
 
-export default function AdminDashboard() {
+const MENU_ITEMS = [
+  { id: 'products', icon: 'inventory-2', labelAr: 'المنتجات', labelEn: 'Products', color: '#4CAF82', route: '/admin/products' },
+  { id: 'orders', icon: 'receipt-long', labelAr: 'الطلبات', labelEn: 'Orders', color: '#5090E0', route: '/admin/orders' },
+  { id: 'users', icon: 'people', labelAr: 'العملاء', labelEn: 'Customers', color: '#E09050', route: '/admin/users' },
+  { id: 'statistics', icon: 'bar-chart', labelAr: 'الإحصائيات', labelEn: 'Statistics', color: '#9C27B0', route: '/admin/statistics' },
+  { id: 'offers', icon: 'local-offer', labelAr: 'العروض', labelEn: 'Offers', color: '#E05C5C', route: '/admin/offers' },
+  { id: 'coupons', icon: 'discount', labelAr: 'الكوبونات', labelEn: 'Coupons', color: '#4AAFCF', route: '/admin/coupons' },
+  { id: 'admins', icon: 'admin-panel-settings', labelAr: 'الإداريون', labelEn: 'Admins', color: '#C9A84C', route: '/admin/admins' },
+  { id: 'delivery', icon: 'local-shipping', labelAr: 'التوصيل', labelEn: 'Delivery', color: '#4CAF82', route: '/admin/delivery' },
+  { id: 'banks', icon: 'account-balance', labelAr: 'البنوك', labelEn: 'Banks', color: '#5090E0', route: '/admin/banks' },
+  { id: 'search', icon: 'search', labelAr: 'تحليل البحث', labelEn: 'Search Analytics', color: '#E09050', route: '/admin/search-analytics' },
+  { id: 'settings', icon: 'settings', labelAr: 'الإعدادات', labelEn: 'Settings', color: '#888', route: '/admin/settings' },
+];
+
+export default function AdminIndexScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { language, user } = useApp();
+  const { language, user, logout } = useApp();
   const { orders, products, users } = useData();
-  const { showAlert } = useAlert();
+  const isRTL = language === 'ar';
 
-  // Permission check
-  const hasPermission = (perm: string) => {
-    if (!user) return false;
-    if (user.isSuperAdmin) return true;
-    return user.permissions.includes(perm);
-  };
-
-  if (!user || (!user.isAdmin && !user.isSuperAdmin)) {
-    return (
-      <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <MaterialIcons name="block" size={60} color={Colors.error} />
-        <Text style={styles.noAccessText}>{language === 'ar' ? 'غير مصرح لك' : 'Access Denied'}</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>{t('back', language)}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const totalRevenue = orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.total, 0);
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
-  const pendingPayments = orders.filter(o => o.paymentStatus === 'pending').length;
+  const todayRevenue = orders
+    .filter(o => o.paymentStatus === 'paid' && new Date(o.createdAt).toDateString() === new Date().toDateString())
+    .reduce((s, o) => s + o.total, 0);
 
-  const AdminCard = ({ icon, label, value, color, route, perm }: any) => {
-    if (perm && !hasPermission(perm)) return null;
-    return (
-      <TouchableOpacity style={styles.adminCard} onPress={() => router.push(route)} activeOpacity={0.8}>
-        <View style={[styles.cardIcon, { backgroundColor: color + '20' }]}>
-          <MaterialIcons name={icon} size={28} color={color} />
-        </View>
-        {value !== undefined ? (
-          <Text style={[styles.cardValue, { color }]}>{value}</Text>
-        ) : null}
-        <Text style={styles.cardLabel}>{label}</Text>
-      </TouchableOpacity>
-    );
-  };
+  const accessibleItems = user?.isSuperAdmin
+    ? MENU_ITEMS
+    : MENU_ITEMS.filter(m => {
+        const perm = `manage_${m.id}`;
+        return user?.permissions.includes(perm) || user?.permissions.includes('view_statistics') && m.id === 'statistics';
+      });
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <MaterialIcons name="arrow-back" size={24} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{t('adminPanel', language)}</Text>
-          <Text style={styles.adminName}>{user.name}</Text>
+      <LinearGradient colors={['#152A1E', '#0D1E16']} style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Image source={require('@/assets/images/dava-logo.png')} style={styles.logoImg} contentFit="contain" />
+          <View>
+            <Text style={styles.adminLabel}>{isRTL ? 'لوحة الإدارة' : 'Admin Panel'}</Text>
+            <Text style={styles.adminName}>{user?.name}</Text>
+          </View>
         </View>
-        <View style={[styles.superBadge, { opacity: user.isSuperAdmin ? 1 : 0 }]}>
-          <MaterialIcons name="verified" size={14} color="#000" />
-          <Text style={styles.superBadgeText}>SUPER</Text>
-        </View>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* Stats Summary */}
-        {hasPermission('view_statistics') ? (
-          <LinearGradient colors={['#1A1A1A', '#111111']} style={styles.statsCard}>
-            <Text style={styles.statsTitle}>
-              {language === 'ar' ? 'ملخص اليوم' : "Today's Summary"}
-            </Text>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{orders.length}</Text>
-                <Text style={styles.statLabel}>{language === 'ar' ? 'إجمالي الطلبات' : 'Total Orders'}</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.warning }]}>{pendingOrders}</Text>
-                <Text style={styles.statLabel}>{language === 'ar' ? 'قيد الانتظار' : 'Pending'}</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: Colors.success }]}>{totalRevenue.toLocaleString()}</Text>
-                <Text style={styles.statLabel}>{language === 'ar' ? 'ريال مبيعات' : 'YER Revenue'}</Text>
-              </View>
+        <View style={styles.headerRight}>
+          {user?.isSuperAdmin ? (
+            <View style={styles.superBadge}>
+              <MaterialIcons name="verified" size={12} color="#0D1E16" />
+              <Text style={styles.superBadgeTxt}>{isRTL ? 'مدير عام' : 'Super Admin'}</Text>
             </View>
-            {pendingPayments > 0 ? (
-              <TouchableOpacity
-                style={styles.pendingAlert}
-                onPress={() => router.push('/admin/orders')}
-              >
-                <MaterialIcons name="payment" size={16} color={Colors.warning} />
-                <Text style={styles.pendingAlertText}>
-                  {pendingPayments} {language === 'ar' ? 'دفعة تنتظر المراجعة' : 'payments awaiting review'}
-                </Text>
-                <MaterialIcons name="arrow-forward-ios" size={14} color={Colors.warning} />
-              </TouchableOpacity>
-            ) : null}
+          ) : null}
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.exitBtn}>
+            <MaterialIcons name="exit-to-app" size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+        {/* Quick Stats */}
+        <View style={styles.statsRow}>
+          <LinearGradient colors={[Colors.primaryDark, Colors.primary]} style={styles.statCard}>
+            <MaterialIcons name="shopping-bag" size={22} color="#0D1E16" />
+            <Text style={styles.statNum}>{orders.length}</Text>
+            <Text style={styles.statLabel}>{isRTL ? 'الطلبات' : 'Orders'}</Text>
           </LinearGradient>
-        ) : null}
-
-        {/* Admin Cards */}
-        <Text style={styles.sectionTitle}>
-          {language === 'ar' ? 'إدارة المتجر' : 'Store Management'}
-        </Text>
-        <View style={styles.cardsGrid}>
-          <AdminCard icon="inventory" label={language === 'ar' ? 'المنتجات' : 'Products'} value={products.length} color={Colors.info} route="/admin/products" perm="manage_products" />
-          <AdminCard icon="receipt-long" label={language === 'ar' ? 'الطلبات' : 'Orders'} value={orders.length} color={Colors.warning} route="/admin/orders" perm="manage_orders" />
-          <AdminCard icon="people" label={language === 'ar' ? 'العملاء' : 'Customers'} value={users.length} color={Colors.success} route="/admin/users" perm="manage_users" />
-          <AdminCard icon="local-offer" label={language === 'ar' ? 'العروض' : 'Offers'} color={Colors.error} route="/admin/offers" perm="manage_offers" />
-          <AdminCard icon="discount" label={language === 'ar' ? 'الكوبونات' : 'Coupons'} color="#9C27B0" route="/admin/coupons" perm="manage_coupons" />
-          <AdminCard icon="bar-chart" label={language === 'ar' ? 'الإحصائيات' : 'Statistics'} color={Colors.primary} route="/admin/statistics" perm="view_statistics" />
+          <View style={[styles.statCard, { backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="pending-actions" size={22} color={Colors.warning} />
+            <Text style={[styles.statNum, { color: Colors.warning }]}>{pendingOrders}</Text>
+            <Text style={styles.statLabel}>{isRTL ? 'قيد الانتظار' : 'Pending'}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="inventory-2" size={22} color={Colors.info} />
+            <Text style={[styles.statNum, { color: Colors.info }]}>{products.length}</Text>
+            <Text style={styles.statLabel}>{isRTL ? 'المنتجات' : 'Products'}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }]}>
+            <MaterialIcons name="people" size={22} color={Colors.success} />
+            <Text style={[styles.statNum, { color: Colors.success }]}>{users.length}</Text>
+            <Text style={styles.statLabel}>{isRTL ? 'العملاء' : 'Customers'}</Text>
+          </View>
         </View>
 
-        {user.isSuperAdmin ? (
-          <>
-            <Text style={styles.sectionTitle}>
-              {language === 'ar' ? 'إعدادات متقدمة' : 'Advanced Settings'}
-            </Text>
-            <View style={styles.cardsGrid}>
-              <AdminCard icon="local-shipping" label={language === 'ar' ? 'التوصيل' : 'Delivery'} color="#00BCD4" route="/admin/delivery" perm="manage_delivery" />
-              <AdminCard icon="account-balance" label={language === 'ar' ? 'البنوك' : 'Banks'} color={Colors.primary} route="/admin/banks" perm="manage_banks" />
-              <AdminCard icon="admin-panel-settings" label={language === 'ar' ? 'الإداريون' : 'Admins'} color={Colors.error} route="/admin/admins" perm="manage_admins" />
-              <AdminCard icon="settings" label={language === 'ar' ? 'الإعدادات' : 'Settings'} color={Colors.textMuted} route="/admin/settings" perm="manage_settings" />
-              <AdminCard icon="search" label={language === 'ar' ? 'تحليل البحث' : 'Search Analytics'} color="#FF9800" route="/admin/search-analytics" perm="view_statistics" />
-            </View>
-          </>
-        ) : null}
+        {/* Today Revenue */}
+        <LinearGradient colors={['#1C3527', '#152A1E']} style={styles.revenueCard}>
+          <MaterialIcons name="trending-up" size={20} color={Colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.revenueLabel}>{isRTL ? 'مبيعات اليوم' : "Today's Sales"}</Text>
+            <Text style={styles.revenueVal}>{todayRevenue.toLocaleString()} {isRTL ? 'ريال' : 'YER'}</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/admin/statistics')}>
+            <Text style={styles.viewAll}>{isRTL ? 'عرض الكل' : 'View All'}</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* Menu Grid */}
+        <Text style={styles.sectionTitle}>{isRTL ? 'إدارة المتجر' : 'Store Management'}</Text>
+        <View style={styles.menuGrid}>
+          {accessibleItems.map(item => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.menuCard}
+              onPress={() => router.push(item.route as any)}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: item.color + '20' }]}>
+                <MaterialIcons name={item.icon as any} size={24} color={item.color} />
+                {item.id === 'orders' && pendingOrders > 0 ? (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeTxt}>{pendingOrders}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={styles.menuLabel}>{isRTL ? item.labelAr : item.labelEn}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
     </View>
   );
@@ -146,47 +130,51 @@ export default function AdminDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  noAccessText: { fontSize: FontSize.xl, color: Colors.textPrimary, marginTop: Spacing.md },
-  backBtn: { marginTop: Spacing.lg, padding: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.md },
-  backBtnText: { color: Colors.textPrimary },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
-    backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.borderGold,
   },
-  headerCenter: { alignItems: 'center' },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
-  adminName: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoImg: { width: 36, height: 36, borderRadius: 9 },
+  adminLabel: { fontSize: FontSize.xs, color: Colors.textMuted },
+  adminName: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   superBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: Colors.primary, borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 8, paddingVertical: 4,
   },
-  superBadgeText: { fontSize: 10, fontWeight: FontWeight.bold, color: '#000' },
-  content: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: 40 },
-  statsCard: { borderRadius: Radius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: Colors.borderGold },
-  statsTitle: { fontSize: FontSize.base, color: Colors.textSecondary, marginBottom: Spacing.md },
-  statsRow: { flexDirection: 'row', alignItems: 'center' },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
-  statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
-  statDivider: { width: 1, height: 40, backgroundColor: Colors.border },
-  pendingAlert: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: Spacing.md, backgroundColor: Colors.warning + '20',
-    borderRadius: Radius.sm, padding: Spacing.sm,
+  superBadgeTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  exitBtn: { padding: 4 },
+  statsRow: { flexDirection: 'row', gap: 8, padding: Spacing.lg },
+  statCard: { flex: 1, borderRadius: Radius.lg, padding: 10, alignItems: 'center', gap: 4 },
+  statNum: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: '#0D1E16' },
+  statLabel: { fontSize: 9, color: Colors.textMuted, textAlign: 'center' },
+  revenueCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginHorizontal: Spacing.lg, borderRadius: Radius.lg,
+    padding: Spacing.md, borderWidth: 1, borderColor: Colors.borderGold,
+    marginBottom: Spacing.lg,
   },
-  pendingAlertText: { flex: 1, fontSize: FontSize.sm, color: Colors.warning },
-  sectionTitle: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
-  cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  adminCard: {
-    width: '31%', backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg, padding: Spacing.md,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
-    gap: 6,
+  revenueLabel: { fontSize: FontSize.sm, color: Colors.textMuted },
+  revenueVal: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  viewAll: { fontSize: FontSize.sm, color: Colors.primary },
+  sectionTitle: {
+    fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textMuted,
+    paddingHorizontal: Spacing.lg, marginBottom: Spacing.md,
+    textTransform: 'uppercase', letterSpacing: 1,
   },
-  cardIcon: { width: 52, height: 52, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center' },
-  cardValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold },
-  cardLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center' },
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, gap: Spacing.sm },
+  menuCard: {
+    width: '22%', flex: 1, minWidth: 70,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: 12,
+    alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
+  },
+  menuIcon: { width: 44, height: 44, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  menuLabel: { fontSize: 10, color: Colors.textSecondary, textAlign: 'center', lineHeight: 14 },
+  menuBadge: {
+    position: 'absolute', top: -4, right: -4, backgroundColor: Colors.error,
+    borderRadius: Radius.full, width: 16, height: 16, justifyContent: 'center', alignItems: 'center',
+  },
+  menuBadgeTxt: { fontSize: 8, color: '#fff', fontWeight: FontWeight.bold },
 });

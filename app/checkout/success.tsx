@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,85 +8,60 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 
-export default function OrderSuccessScreen() {
+export default function CheckoutSuccessScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { language } = useApp();
+  const isRTL = language === 'ar';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 20 }]}>
+    <LinearGradient colors={['#060F0A', '#0D1E16', '#152A1E']} style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 20 }]}>
       <View style={styles.content}>
-        <Image source={require('@/assets/images/order-success.png')} style={styles.image} />
-        
-        <View style={styles.iconBadge}>
-          <MaterialIcons name="check-circle" size={60} color={Colors.success} />
+        <View style={styles.iconWrap}>
+          <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.iconGrad}>
+            <MaterialIcons name="check-circle" size={52} color="#0D1E16" />
+          </LinearGradient>
+          <View style={styles.glow} />
         </View>
 
-        <Text style={styles.title}>
-          {language === 'ar' ? 'تم تأكيد طلبك! 🎉' : 'Order Confirmed! 🎉'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {language === 'ar'
-            ? 'تم إرسال تفاصيل طلبك إلى إدارة المتجر عبر واتساب وسيتم مراجعة الدفع والتواصل معك قريباً'
-            : 'Your order details have been sent to the store via WhatsApp. Payment will be reviewed and you will be contacted soon.'}
+        <Text style={styles.title}>{isRTL ? '🎉 تم تقديم طلبك!' : '🎉 Order Placed!'}</Text>
+        <Text style={styles.sub}>
+          {isRTL
+            ? 'تم استلام طلبك بنجاح. سيتم مراجعة إثبات الدفع وتأكيد طلبك قريباً.'
+            : 'Your order has been received. Payment will be reviewed and your order confirmed shortly.'}
         </Text>
 
-        <View style={styles.infoCard}>
-          <MaterialIcons name="whatsapp" size={24} color="#25D366" />
-          <Text style={styles.infoText}>
-            {language === 'ar'
-              ? 'تم إرسال تفاصيل الطلب للمدير عبر واتساب'
-              : 'Order details sent to admin via WhatsApp'}
-          </Text>
-        </View>
+        <Image source={require('@/assets/images/order-success.png')} style={styles.successImg} contentFit="contain" />
 
-        <View style={styles.buttons}>
-          <TouchableOpacity style={styles.ordersBtn} onPress={() => router.replace('/(tabs)/orders')}>
-            <Text style={styles.ordersBtnText}>
-              {language === 'ar' ? 'عرض طلباتي' : 'View My Orders'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/(tabs)')}>
-            <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.homeBtnGradient}>
-              <MaterialIcons name="home" size={18} color="#000" />
-              <Text style={styles.homeBtnText}>
-                {language === 'ar' ? 'العودة للرئيسية' : 'Back to Home'}
-              </Text>
+        <View style={styles.btns}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace('/(tabs)/orders')}>
+            <LinearGradient colors={[Colors.primaryLight, Colors.primary, Colors.primaryDark]} style={styles.primaryBtnGrad}>
+              <MaterialIcons name="receipt-long" size={18} color="#0D1E16" />
+              <Text style={styles.primaryBtnTxt}>{isRTL ? 'عرض طلباتي' : 'View My Orders'}</Text>
             </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/(tabs)')}>
+            <Text style={styles.secondaryBtnTxt}>{isRTL ? 'متابعة التسوق' : 'Continue Shopping'}</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
-  image: { width: 160, height: 160, marginBottom: Spacing.md },
-  iconBadge: { marginBottom: Spacing.lg },
-  title: {
-    fontSize: FontSize.xxl, fontWeight: FontWeight.bold,
-    color: Colors.textPrimary, textAlign: 'center', marginBottom: Spacing.md,
-  },
-  subtitle: {
-    fontSize: FontSize.base, color: Colors.textSecondary,
-    textAlign: 'center', lineHeight: 24, marginBottom: Spacing.xl,
-  },
-  infoCard: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
-    padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
-    marginBottom: Spacing.xl,
-  },
-  infoText: { fontSize: FontSize.sm, color: Colors.textSecondary, flex: 1 },
-  buttons: { gap: Spacing.md, width: '100%' },
-  ordersBtn: {
-    paddingVertical: 14, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.borderGold, alignItems: 'center',
-  },
-  ordersBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.primary },
-  homeBtn: { borderRadius: Radius.md, overflow: 'hidden' },
-  homeBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
-  homeBtnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
+  container: { flex: 1 },
+  content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.xl, gap: Spacing.lg },
+  iconWrap: { alignItems: 'center', justifyContent: 'center' },
+  iconGrad: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
+  glow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: Colors.primary + '20' },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.textPrimary, textAlign: 'center' },
+  sub: { fontSize: FontSize.base, color: Colors.textSecondary, textAlign: 'center', lineHeight: 24 },
+  successImg: { width: 180, height: 180 },
+  btns: { width: '100%', gap: Spacing.sm },
+  primaryBtn: { borderRadius: Radius.full, overflow: 'hidden' },
+  primaryBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15 },
+  primaryBtnTxt: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  secondaryBtn: { paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.borderGold, borderRadius: Radius.full },
+  secondaryBtnTxt: { fontSize: FontSize.base, color: Colors.primary, fontWeight: FontWeight.semibold },
 });

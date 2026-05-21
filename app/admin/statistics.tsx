@@ -14,89 +14,79 @@ export default function StatisticsScreen() {
   const insets = useSafeAreaInsets();
   const { language } = useApp();
   const { orders, products, users } = useData();
+  const isRTL = language === 'ar';
 
   const totalRevenue = orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.total, 0);
   const pendingRevenue = orders.filter(o => o.paymentStatus === 'pending').reduce((s, o) => s + o.total, 0);
-  const totalOrders = orders.length;
   const completedOrders = orders.filter(o => o.status === 'delivered').length;
   const cancelledOrders = orders.filter(o => o.status === 'cancelled').length;
 
   const salesByCategory = CATEGORIES.map(cat => {
-    const catOrders = orders.flatMap(o => o.items.filter(i => {
+    const items = orders.flatMap(o => o.items.filter(i => {
       const p = products.find(p => p.id === i.productId);
       return p?.category === cat.id;
     }));
-    const revenue = catOrders.reduce((s, i) => s + i.price * i.quantity, 0);
-    return { ...cat, revenue, count: catOrders.length };
+    return { ...cat, revenue: items.reduce((s, i) => s + i.price * i.quantity, 0), count: items.length };
   }).sort((a, b) => b.revenue - a.revenue);
 
-  const topProducts = [...products]
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 5);
-
-  const StatCard = ({ label, value, color, icon, sub }: any) => (
-    <View style={[styles.statCard, { borderColor: color + '40' }]}>
-      <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
-        <MaterialIcons name={icon} size={22} color={color} />
-      </View>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-      {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
-    </View>
-  );
+  const topProducts = [...products].sort((a, b) => b.sold - a.sold).slice(0, 5);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={24} color={Colors.textPrimary} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>{language === 'ar' ? 'الإحصائيات' : 'Statistics'}</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.title}>{isRTL ? 'الإحصائيات' : 'Statistics'}</Text>
+        <View style={{ width: 22 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Revenue */}
         <LinearGradient colors={[Colors.primaryDark, Colors.primary]} style={styles.revenueCard}>
-          <Text style={styles.revenueLabel}>{language === 'ar' ? 'إجمالي المبيعات المؤكدة' : 'Total Confirmed Revenue'}</Text>
-          <Text style={styles.revenueValue}>{totalRevenue.toLocaleString()}</Text>
-          <Text style={styles.revenueCurrency}>{language === 'ar' ? 'ريال يمني' : 'YER'}</Text>
-          <Text style={styles.revenuePending}>
-            {language === 'ar' ? 'في انتظار التأكيد: ' : 'Pending: '}{pendingRevenue.toLocaleString()} {language === 'ar' ? 'ريال' : 'YER'}
-          </Text>
+          <Text style={styles.revLabel}>{isRTL ? 'إجمالي المبيعات المؤكدة' : 'Total Confirmed Revenue'}</Text>
+          <Text style={styles.revValue}>{totalRevenue.toLocaleString()}</Text>
+          <Text style={styles.revCurr}>{isRTL ? 'ريال يمني' : 'YER'}</Text>
+          <Text style={styles.revPending}>{isRTL ? `قيد المراجعة: ${pendingRevenue.toLocaleString()} ريال` : `Pending: ${pendingRevenue.toLocaleString()} YER`}</Text>
         </LinearGradient>
 
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <StatCard label={language === 'ar' ? 'إجمالي الطلبات' : 'Total Orders'} value={totalOrders} color={Colors.info} icon="receipt-long" />
-          <StatCard label={language === 'ar' ? 'مكتملة' : 'Delivered'} value={completedOrders} color={Colors.success} icon="check-circle" />
-          <StatCard label={language === 'ar' ? 'ملغية' : 'Cancelled'} value={cancelledOrders} color={Colors.error} icon="cancel" />
-          <StatCard label={language === 'ar' ? 'العملاء' : 'Customers'} value={users.length} color="#9C27B0" icon="people" />
-          <StatCard label={language === 'ar' ? 'المنتجات' : 'Products'} value={products.length} color={Colors.warning} icon="inventory" />
-          <StatCard label={language === 'ar' ? 'معدل التحويل' : 'Avg Order'} value={totalOrders > 0 ? (totalRevenue / totalOrders).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'} color={Colors.primary} icon="trending-up" sub={language === 'ar' ? 'ريال/طلب' : 'YER/order'} />
+        <View style={styles.grid}>
+          {[
+            { l: isRTL ? 'إجمالي الطلبات' : 'Total Orders', v: orders.length, c: Colors.info, icon: 'receipt-long' },
+            { l: isRTL ? 'مكتملة' : 'Delivered', v: completedOrders, c: Colors.success, icon: 'check-circle' },
+            { l: isRTL ? 'ملغية' : 'Cancelled', v: cancelledOrders, c: Colors.error, icon: 'cancel' },
+            { l: isRTL ? 'العملاء' : 'Customers', v: users.length, c: '#9C27B0', icon: 'people' },
+            { l: isRTL ? 'المنتجات' : 'Products', v: products.length, c: Colors.warning, icon: 'inventory' },
+            { l: isRTL ? 'متوسط الطلب' : 'Avg Order', v: orders.length > 0 ? Math.round(totalRevenue / orders.length).toLocaleString() : 0, c: Colors.primary, icon: 'trending-up' },
+          ].map((s, i) => (
+            <View key={i} style={[styles.statCard, { borderColor: s.c + '40' }]}>
+              <View style={[styles.statIcon, { backgroundColor: s.c + '20' }]}>
+                <MaterialIcons name={s.icon as any} size={20} color={s.c} />
+              </View>
+              <Text style={[styles.statVal, { color: s.c }]}>{s.v}</Text>
+              <Text style={styles.statLabel}>{s.l}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Sales by Category */}
-        <Text style={styles.sectionTitle}>{language === 'ar' ? 'المبيعات حسب التصنيف' : 'Sales by Category'}</Text>
+        <Text style={styles.sectionTitle}>{isRTL ? 'المبيعات حسب التصنيف' : 'Sales by Category'}</Text>
         {salesByCategory.map(cat => (
-          <View key={cat.id} style={styles.categoryRow}>
-            <View style={[styles.categoryDot, { backgroundColor: cat.color }]} />
-            <Text style={styles.categoryName}>{language === 'ar' ? cat.nameAr : cat.nameEn}</Text>
-            <View style={styles.categoryBar}>
-              <View style={[styles.categoryBarFill, {
+          <View key={cat.id} style={styles.catRow}>
+            <View style={[styles.catDot, { backgroundColor: cat.color }]} />
+            <Text style={styles.catName}>{isRTL ? cat.nameAr : cat.nameEn}</Text>
+            <View style={styles.catBar}>
+              <View style={[styles.catBarFill, {
                 backgroundColor: cat.color,
-                width: salesByCategory[0].revenue > 0 ? `${(cat.revenue / salesByCategory[0].revenue) * 100}%` : '0%',
+                width: `${salesByCategory[0].revenue > 0 ? (cat.revenue / salesByCategory[0].revenue) * 100 : 0}%` as any,
               }]} />
             </View>
-            <Text style={styles.categoryRevenue}>{cat.revenue.toLocaleString()}</Text>
+            <Text style={styles.catRev}>{cat.revenue.toLocaleString()}</Text>
           </View>
         ))}
 
-        {/* Top Products */}
-        <Text style={styles.sectionTitle}>{language === 'ar' ? 'أكثر المنتجات مبيعاً' : 'Top Selling Products'}</Text>
-        {topProducts.map((p, idx) => (
-          <View key={p.id} style={styles.topProductRow}>
-            <View style={styles.rankBadge}><Text style={styles.rankText}>{idx + 1}</Text></View>
-            <Text style={styles.topProductName} numberOfLines={1}>{language === 'ar' ? p.nameAr : p.nameEn}</Text>
-            <Text style={styles.topProductSold}>{p.sold} {language === 'ar' ? 'مبيع' : 'sold'}</Text>
+        <Text style={styles.sectionTitle}>{isRTL ? 'أكثر المنتجات مبيعاً' : 'Top Selling Products'}</Text>
+        {topProducts.map((p, i) => (
+          <View key={p.id} style={styles.topRow}>
+            <View style={styles.rankBadge}><Text style={styles.rankTxt}>{i + 1}</Text></View>
+            <Text style={styles.topName} numberOfLines={1}>{isRTL ? p.nameAr : p.nameEn}</Text>
+            <Text style={styles.topSold}>{p.sold} {isRTL ? 'مبيع' : 'sold'}</Text>
           </View>
         ))}
       </ScrollView>
@@ -107,29 +97,28 @@ export default function StatisticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
   content: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: 40 },
-  revenueCard: { borderRadius: Radius.xl, padding: Spacing.xl, alignItems: 'center' },
-  revenueLabel: { fontSize: FontSize.sm, color: '#000', opacity: 0.8 },
-  revenueValue: { fontSize: 42, fontWeight: FontWeight.extrabold, color: '#000', marginTop: 4 },
-  revenueCurrency: { fontSize: FontSize.base, color: '#000', opacity: 0.8 },
-  revenuePending: { fontSize: FontSize.sm, color: '#000', opacity: 0.6, marginTop: 8 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  statCard: { width: '31%', backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.sm, alignItems: 'center', borderWidth: 1, gap: 4 },
-  statIcon: { width: 40, height: 40, borderRadius: Radius.sm, justifyContent: 'center', alignItems: 'center' },
-  statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.extrabold },
+  revenueCard: { borderRadius: Radius.xl, padding: Spacing.xl, alignItems: 'center', gap: 4 },
+  revLabel: { fontSize: FontSize.sm, color: '#0D1E16', opacity: 0.8 },
+  revValue: { fontSize: 42, fontWeight: FontWeight.extrabold, color: '#0D1E16' },
+  revCurr: { fontSize: FontSize.base, color: '#0D1E16', opacity: 0.7 },
+  revPending: { fontSize: FontSize.xs, color: '#0D1E16', opacity: 0.6 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  statCard: { width: '31%', flex: 1, minWidth: 90, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: 10, alignItems: 'center', borderWidth: 1, gap: 4 },
+  statIcon: { width: 38, height: 38, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center' },
+  statVal: { fontSize: FontSize.lg, fontWeight: FontWeight.extrabold },
   statLabel: { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
-  statSub: { fontSize: 9, color: Colors.textMuted },
   sectionTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 6 },
-  categoryDot: { width: 10, height: 10, borderRadius: 5 },
-  categoryName: { fontSize: FontSize.sm, color: Colors.textSecondary, width: 90 },
-  categoryBar: { flex: 1, height: 8, backgroundColor: Colors.bgSurface, borderRadius: Radius.full, overflow: 'hidden' },
-  categoryBarFill: { height: '100%', borderRadius: Radius.full },
-  categoryRevenue: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold, width: 60, textAlign: 'right' },
-  topProductRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
-  rankBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  rankText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#000' },
-  topProductName: { flex: 1, fontSize: FontSize.sm, color: Colors.textPrimary },
-  topProductSold: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  catRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 5 },
+  catDot: { width: 10, height: 10, borderRadius: 5 },
+  catName: { fontSize: FontSize.sm, color: Colors.textSecondary, width: 90 },
+  catBar: { flex: 1, height: 8, backgroundColor: Colors.bgSurface, borderRadius: Radius.full, overflow: 'hidden' },
+  catBarFill: { height: '100%', borderRadius: Radius.full },
+  catRev: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold, width: 60, textAlign: 'right' },
+  topRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
+  rankBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
+  rankTxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  topName: { flex: 1, fontSize: FontSize.sm, color: Colors.textPrimary },
+  topSold: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
 });

@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, Image, Dimensions, Animated,
+  FlatList, Dimensions, Animated,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,325 +15,471 @@ import { CATEGORIES } from '@/constants/config';
 import { t } from '@/constants/i18n';
 
 const { width } = Dimensions.get('window');
+const CARD_W = (width - Spacing.lg * 2 - Spacing.sm) / 2;
 
 const BANNERS = [
-  require('@/assets/images/hero-banner-1.jpg'),
-  require('@/assets/images/hero-banner-2.jpg'),
-  require('@/assets/images/hero-banner-3.jpg'),
+  'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&q=80',
+  'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80',
+  'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&q=80',
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { language, user } = useApp();
+  const { language, user, cartCount, favorites, toggleFavorite } = useApp();
   const { products, offers } = useData();
   const [currentBanner, setCurrentBanner] = useState(0);
   const bannerRef = useRef<ScrollView>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const next = (currentBanner + 1) % BANNERS.length;
-      setCurrentBanner(next);
-      bannerRef.current?.scrollTo({ x: next * width, animated: true });
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [currentBanner]);
-
-  const featuredProducts = products.filter(p => p.isFeatured && p.isVisible);
-  const offerProducts = products.filter(p => p.isOffer && p.isVisible);
-  const newProducts = products.filter(p => p.isNew && p.isVisible);
   const isRTL = language === 'ar';
 
-  const renderProductCard = ({ item }: any) => (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => router.push({ pathname: '/product/[id]', params: { id: item.id } })}
-      activeOpacity={0.85}
-    >
-      <View style={styles.productImageContainer}>
-        <Image source={{ uri: item.images[0] }} style={styles.productImage} />
-        {item.isOffer && item.offerPercent ? (
-          <View style={styles.offerBadge}>
-            <Text style={styles.offerBadgeText}>-{item.offerPercent}%</Text>
-          </View>
-        ) : null}
-        {item.isNew ? (
-          <View style={styles.newBadge}>
-            <Text style={styles.newBadgeText}>{language === 'ar' ? 'جديد' : 'NEW'}</Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.productInfo}>
-        <Text style={[styles.productName, isRTL && styles.rtlText]} numberOfLines={2}>
-          {language === 'ar' ? item.nameAr : item.nameEn}
-        </Text>
-        <View style={styles.ratingRow}>
-          <MaterialIcons name="star" size={12} color={Colors.primary} />
-          <Text style={styles.ratingText}>{item.rating}</Text>
-          <Text style={styles.soldText}>({item.sold})</Text>
-        </View>
-        <View style={styles.priceRow}>
-          <Text style={styles.price}>{item.price.toLocaleString()}</Text>
-          <Text style={styles.currency}>{t('rial', language)}</Text>
-          {item.originalPrice ? (
-            <Text style={styles.originalPrice}>{item.originalPrice.toLocaleString()}</Text>
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setCurrentBanner(p => {
+        const n = (p + 1) % BANNERS.length;
+        bannerRef.current?.scrollTo({ x: n * width, animated: true });
+        return n;
+      });
+    }, 4000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const featured = products.filter(p => p.isFeatured && p.isVisible);
+  const offerProds = products.filter(p => p.isOffer && p.isVisible);
+  const newArrivals = products.filter(p => p.isNew && p.isVisible);
+  const activeOffer = offers.find(o => o.isActive);
+
+  const headerOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [0, 1], extrapolate: 'clamp' });
+
+  const ProductCard = ({ item }: { item: any }) => {
+    const isFav = favorites.includes(item.id);
+    return (
+      <TouchableOpacity
+        style={styles.productCard}
+        onPress={() => router.push({ pathname: '/product/[id]', params: { id: item.id } })}
+        activeOpacity={0.88}
+      >
+        <View style={styles.cardImgWrap}>
+          <Image
+            source={{ uri: item.images[0] || 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400' }}
+            style={styles.cardImg}
+            contentFit="cover"
+            transition={200}
+          />
+          {item.isOffer && item.offerPercent ? (
+            <View style={styles.saleTag}>
+              <Text style={styles.saleTagText}>-{item.offerPercent}%</Text>
+            </View>
           ) : null}
+          {item.isNew ? (
+            <View style={styles.newTag}>
+              <Text style={styles.newTagText}>{isRTL ? 'جديد' : 'NEW'}</Text>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={styles.favBtn}
+            onPress={() => toggleFavorite(item.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons
+              name={isFav ? 'favorite' : 'favorite-border'}
+              size={18}
+              color={isFav ? Colors.error : Colors.textSecondary}
+            />
+          </TouchableOpacity>
         </View>
+        <View style={styles.cardBody}>
+          <Text style={[styles.cardName, isRTL && styles.rtl]} numberOfLines={2}>
+            {isRTL ? item.nameAr : item.nameEn}
+          </Text>
+          <View style={styles.ratingRow}>
+            <MaterialIcons name="star" size={11} color={Colors.primary} />
+            <Text style={styles.ratingTxt}>{item.rating}</Text>
+            <Text style={styles.soldTxt}>({item.sold})</Text>
+          </View>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceTxt}>{item.price.toLocaleString()}</Text>
+            <Text style={styles.currTxt}>{isRTL ? 'ريال' : 'YER'}</Text>
+            {item.originalPrice ? (
+              <Text style={styles.origTxt}>{item.originalPrice.toLocaleString()}</Text>
+            ) : null}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const SectionHeader = ({ title, onSeeAll }: { title: string; onSeeAll: () => void }) => (
+    <View style={styles.sectionHead}>
+      <View style={styles.sectionTitleWrap}>
+        <View style={styles.sectionAccent} />
+        <Text style={styles.sectionTitle}>{title}</Text>
       </View>
-    </TouchableOpacity>
+      <TouchableOpacity onPress={onSeeAll} style={styles.seeAllBtn}>
+        <Text style={styles.seeAllTxt}>{t('seeAll', language)}</Text>
+        <MaterialIcons name={isRTL ? 'arrow-back-ios' : 'arrow-forward-ios'} size={11} color={Colors.primary} />
+      </TouchableOpacity>
+    </View>
   );
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 20 }}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Sticky header on scroll */}
+      <Animated.View style={[styles.stickyHeader, { opacity: headerOpacity }]}>
+        <LinearGradient colors={['#0D1E16', '#152A1E']} style={styles.stickyHeaderInner}>
+          <Image source={require('@/assets/images/dava-logo.png')} style={styles.stickyLogo} contentFit="contain" />
+          <Text style={styles.stickyBrand}>DAVA</Text>
+        </LinearGradient>
+      </Animated.View>
+
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: 30 }}
       >
-        {/* Header */}
-        <LinearGradient colors={['#111111', '#0A0A0A']} style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.logo}>DAVA</Text>
-            <Text style={styles.taglineSmall}>{language === 'ar' ? 'أزياء فاخرة' : 'Luxury Fashion'}</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/search/index')}>
-              <MaterialIcons name="search" size={24} color={Colors.textPrimary} />
-            </TouchableOpacity>
-            {(user?.isAdmin || user?.isSuperAdmin) ? (
-              <TouchableOpacity style={styles.adminBtn} onPress={() => router.push('/admin/index')}>
-                <MaterialIcons name="admin-panel-settings" size={22} color="#000" />
+        {/* ── HEADER ── */}
+        <LinearGradient colors={['#152A1E', '#0D1E16']} style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.logoWrap}>
+              <Image source={require('@/assets/images/dava-logo.png')} style={styles.logoImg} contentFit="contain" />
+              <View>
+                <Text style={styles.brandTxt}>DAVA</Text>
+                <Text style={styles.brandSub}>{isRTL ? 'أزياء فاخرة' : 'Luxury Fashion'}</Text>
+              </View>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/search/index')}>
+                <MaterialIcons name="search" size={22} color={Colors.textPrimary} />
               </TouchableOpacity>
-            ) : null}
+              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)/cart')}>
+                <MaterialIcons name="shopping-bag" size={22} color={Colors.textPrimary} />
+                {cartCount > 0 ? (
+                  <View style={styles.cartDot}><Text style={styles.cartDotTxt}>{cartCount}</Text></View>
+                ) : null}
+              </TouchableOpacity>
+              {(user?.isAdmin || user?.isSuperAdmin) ? (
+                <TouchableOpacity style={styles.adminPill} onPress={() => router.push('/admin/index')}>
+                  <MaterialIcons name="shield" size={14} color="#0D1E16" />
+                  <Text style={styles.adminPillTxt}>{isRTL ? 'إدارة' : 'Admin'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
+
+          {/* Search bar shortcut */}
+          <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/search/index')} activeOpacity={0.8}>
+            <MaterialIcons name="search" size={18} color={Colors.textMuted} />
+            <Text style={styles.searchBarTxt}>
+              {isRTL ? 'ابحثي عن الموضة، العبايات، الإكسسوارات...' : 'Search fashion, abayas, accessories...'}
+            </Text>
+            <MaterialIcons name="tune" size={18} color={Colors.primary} />
+          </TouchableOpacity>
         </LinearGradient>
 
-        {/* Hero Slider */}
-        <View style={styles.sliderContainer}>
+        {/* ── HERO SLIDER ── */}
+        <View>
           <ScrollView
             ref={bannerRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={e => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-              setCurrentBanner(idx);
-            }}
+            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={e => setCurrentBanner(Math.round(e.nativeEvent.contentOffset.x / width))}
           >
-            {BANNERS.map((banner, idx) => (
+            {BANNERS.map((uri, idx) => (
               <View key={idx} style={styles.bannerSlide}>
-                <Image source={banner} style={styles.bannerImage} />
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.8)']}
-                  style={styles.bannerOverlay}
-                >
-                  <Text style={styles.bannerTitle}>
-                    {language === 'ar' ? 'مجموعة الفخامة' : 'Luxury Collection'}
+                <Image source={{ uri }} style={styles.bannerImg} contentFit="cover" />
+                <LinearGradient colors={['transparent', 'rgba(13,30,22,0.92)']} style={styles.bannerOverlay}>
+                  <Text style={styles.bannerLabel}>
+                    {idx === 0 ? (isRTL ? 'كولكشن الفخامة' : 'Luxury Collection')
+                      : idx === 1 ? (isRTL ? 'أزياء المرأة' : 'Women Fashion')
+                        : (isRTL ? 'إكسسوارات راقية' : 'Premium Accessories')}
                   </Text>
-                  <TouchableOpacity style={styles.shopNowBtn} onPress={() => router.push('/(tabs)/categories')}>
-                    <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.shopNowGradient}>
-                      <Text style={styles.shopNowText}>{t('shopNow', language)}</Text>
-                      <MaterialIcons name="arrow-forward" size={14} color="#000" />
+                  <TouchableOpacity
+                    style={styles.bannerCTA}
+                    onPress={() => router.push('/(tabs)/categories')}
+                  >
+                    <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.bannerCTAGrad}>
+                      <Text style={styles.bannerCTATxt}>{t('shopNow', language)}</Text>
                     </LinearGradient>
                   </TouchableOpacity>
                 </LinearGradient>
               </View>
             ))}
           </ScrollView>
-          <View style={styles.sliderDots}>
-            {BANNERS.map((_, idx) => (
-              <View key={idx} style={[styles.dot, currentBanner === idx && styles.activeDot]} />
+          <View style={styles.dots}>
+            {BANNERS.map((_, i) => (
+              <View key={i} style={[styles.dot, currentBanner === i && styles.dotActive]} />
             ))}
           </View>
         </View>
 
-        {/* Categories */}
+        {/* ── CATEGORIES ── */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-              {t('categories', language)}
-            </Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
+          <SectionHeader
+            title={isRTL ? 'تسوق حسب التصنيف' : 'Shop by Category'}
+            onSeeAll={() => router.push('/(tabs)/categories')}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
             {CATEGORIES.map(cat => (
               <TouchableOpacity
                 key={cat.id}
-                style={styles.categoryChip}
+                style={styles.catItem}
                 onPress={() => router.push({ pathname: '/(tabs)/categories', params: { category: cat.id } })}
               >
-                <View style={[styles.categoryIcon, { backgroundColor: cat.color + '20' }]}>
-                  <MaterialIcons name={cat.icon as any} size={22} color={cat.color} />
-                </View>
-                <Text style={styles.categoryName}>
-                  {language === 'ar' ? cat.nameAr : cat.nameEn}
+                <LinearGradient
+                  colors={[cat.color + '30', cat.color + '10']}
+                  style={styles.catIcon}
+                >
+                  <MaterialIcons name={cat.icon as any} size={24} color={cat.color} />
+                </LinearGradient>
+                <Text style={styles.catName} numberOfLines={2}>
+                  {isRTL ? cat.nameAr : cat.nameEn}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
-        {/* Active Offers Banner */}
-        {offers.filter(o => o.isActive).length > 0 ? (
-          <View style={styles.offerBannerContainer}>
-            <LinearGradient colors={[Colors.primaryDark, Colors.primary, Colors.primaryLight]} style={styles.offerBanner}>
-              <View style={styles.offerBannerContent}>
-                <MaterialIcons name="local-offer" size={28} color="#000" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.offerBannerTitle}>
-                    {language === 'ar' 
-                      ? offers.find(o => o.isActive)?.titleAr 
-                      : offers.find(o => o.isActive)?.titleEn}
+        {/* ── FLASH OFFER BANNER ── */}
+        {activeOffer ? (
+          <TouchableOpacity
+            style={styles.flashWrap}
+            onPress={() => router.push('/(tabs)/categories')}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={[Colors.primaryDark + 'EE', Colors.primary + 'EE', Colors.primaryLight + 'CC']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={styles.flashBanner}
+            >
+              <View style={styles.flashLeft}>
+                <MaterialIcons name="local-fire-department" size={26} color="#0D1E16" />
+                <View>
+                  <Text style={styles.flashTitle}>
+                    {isRTL ? activeOffer.titleAr : activeOffer.titleEn}
                   </Text>
-                  <Text style={styles.offerBannerSubtitle}>
-                    {language === 'ar' ? 'خصم حتى' : 'Up to'} {offers.find(o => o.isActive)?.discount}%
+                  <Text style={styles.flashSub}>
+                    {isRTL ? `خصم ${activeOffer.discount}% على المجموعة` : `${activeOffer.discount}% off the collection`}
                   </Text>
                 </View>
-                <MaterialIcons name="arrow-forward-ios" size={18} color="#000" />
               </View>
+              <MaterialIcons name="chevron-right" size={22} color="#0D1E16" />
             </LinearGradient>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* ── FEATURED ── */}
+        {featured.length > 0 ? (
+          <View style={styles.section}>
+            <SectionHeader
+              title={isRTL ? 'منتجات مختارة' : 'Featured Picks'}
+              onSeeAll={() => router.push('/(tabs)/categories')}
+            />
+            <FlatList
+              data={featured.slice(0, 8)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={i => i.id}
+              renderItem={({ item }) => <ProductCard item={item} />}
+              contentContainerStyle={{ gap: Spacing.sm, paddingRight: Spacing.md }}
+              scrollEnabled
+            />
           </View>
         ) : null}
 
-        {/* Featured Products */}
-        {featuredProducts.length > 0 ? (
+        {/* ── OFFER PRODUCTS ── */}
+        {offerProds.length > 0 ? (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-                {language === 'ar' ? 'منتجات مميزة' : 'Featured Products'}
+            <SectionHeader
+              title={isRTL ? '🔥 عروض لفترة محدودة' : '🔥 Limited Deals'}
+              onSeeAll={() => router.push('/(tabs)/categories')}
+            />
+            <FlatList
+              data={offerProds.slice(0, 8)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={i => i.id}
+              renderItem={({ item }) => <ProductCard item={item} />}
+              contentContainerStyle={{ gap: Spacing.sm, paddingRight: Spacing.md }}
+              scrollEnabled
+            />
+          </View>
+        ) : null}
+
+        {/* ── NEW ARRIVALS ── */}
+        {newArrivals.length > 0 ? (
+          <View style={styles.section}>
+            <SectionHeader
+              title={isRTL ? '✨ وصل حديثاً' : '✨ New Arrivals'}
+              onSeeAll={() => router.push('/(tabs)/categories')}
+            />
+            <FlatList
+              data={newArrivals.slice(0, 8)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={i => i.id}
+              renderItem={({ item }) => <ProductCard item={item} />}
+              contentContainerStyle={{ gap: Spacing.sm, paddingRight: Spacing.md }}
+              scrollEnabled
+            />
+          </View>
+        ) : null}
+
+        {/* ── ALL PRODUCTS GRID ── */}
+        <View style={styles.section}>
+          <SectionHeader
+            title={isRTL ? 'جميع المنتجات' : 'All Products'}
+            onSeeAll={() => router.push('/(tabs)/categories')}
+          />
+          <View style={styles.grid}>
+            {products.filter(p => p.isVisible).slice(0, 6).map(item => (
+              <ProductCard key={item.id} item={item} />
+            ))}
+          </View>
+          {products.filter(p => p.isVisible).length > 6 ? (
+            <TouchableOpacity
+              style={styles.viewMoreBtn}
+              onPress={() => router.push('/(tabs)/categories')}
+            >
+              <Text style={styles.viewMoreTxt}>
+                {isRTL ? `عرض جميع المنتجات (${products.filter(p => p.isVisible).length})` : `View All (${products.filter(p => p.isVisible).length})`}
               </Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/categories')}>
-                <Text style={styles.seeAll}>{t('seeAll', language)}</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={featuredProducts}
-              renderItem={renderProductCard}
-              keyExtractor={item => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productsList}
-              scrollEnabled={true}
-            />
-          </View>
-        ) : null}
+              <MaterialIcons name="arrow-forward" size={16} color="#0D1E16" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
-        {/* Offers */}
-        {offerProducts.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>{t('offers', language)}</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/categories')}>
-                <Text style={styles.seeAll}>{t('seeAll', language)}</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={offerProducts}
-              renderItem={renderProductCard}
-              keyExtractor={item => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productsList}
-              scrollEnabled={true}
-            />
-          </View>
-        ) : null}
-
-        {/* New Arrivals */}
-        {newProducts.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>{t('newArrivals', language)}</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/categories')}>
-                <Text style={styles.seeAll}>{t('seeAll', language)}</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={newProducts}
-              renderItem={renderProductCard}
-              keyExtractor={item => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.productsList}
-              scrollEnabled={true}
-            />
-          </View>
-        ) : null}
-      </ScrollView>
+        {/* ── FOOTER BANNER ── */}
+        <View style={styles.footerBanner}>
+          <LinearGradient colors={['#152A1E', '#1C3527']} style={styles.footerGrad}>
+            <Image source={require('@/assets/images/dava-logo.png')} style={styles.footerLogo} contentFit="contain" />
+            <Text style={styles.footerBrand}>DAVA</Text>
+            <Text style={styles.footerTag}>{isRTL ? 'أزياء فاخرة لكل إطلالة' : 'Luxury Fashion for Every Look'}</Text>
+          </LinearGradient>
+        </View>
+      </Animated.ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
+  stickyHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+  },
+  stickyHeaderInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: Spacing.lg, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  headerLeft: {},
-  logo: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 4 },
-  taglineSmall: { fontSize: FontSize.xs, color: Colors.textMuted },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  headerBtn: { padding: 8 },
-  adminBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.sm,
-    padding: 6,
+  stickyLogo: { width: 28, height: 28, borderRadius: 7 },
+  stickyBrand: { fontSize: FontSize.lg, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 3 },
+  header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.md, gap: 12 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  logoWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoImg: { width: 40, height: 40, borderRadius: 10 },
+  brandTxt: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 4 },
+  brandSub: { fontSize: FontSize.xs, color: Colors.textMuted, letterSpacing: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  cartDot: {
+    position: 'absolute', top: 4, right: 4, backgroundColor: Colors.error,
+    borderRadius: 8, minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
   },
-  sliderContainer: { position: 'relative' },
-  bannerSlide: { width, height: 220 },
-  bannerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  bannerOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: Spacing.lg, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+  cartDotTxt: { fontSize: 9, color: '#fff', fontWeight: FontWeight.bold },
+  adminPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primary, borderRadius: Radius.full,
+    paddingHorizontal: 10, paddingVertical: 6,
   },
-  bannerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#fff', flex: 1 },
-  shopNowBtn: { borderRadius: Radius.full, overflow: 'hidden' },
-  shopNowGradient: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 6 },
-  shopNowText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#000' },
-  sliderDots: { flexDirection: 'row', justifyContent: 'center', paddingVertical: Spacing.sm, gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.textMuted },
-  activeDot: { width: 20, backgroundColor: Colors.primary },
-  section: { paddingHorizontal: Spacing.lg, marginTop: Spacing.lg },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  seeAll: { fontSize: FontSize.sm, color: Colors.primary },
-  rtlText: { textAlign: 'right' },
-  categoriesRow: { gap: Spacing.sm, paddingRight: Spacing.sm },
-  categoryChip: { alignItems: 'center', gap: 6 },
-  categoryIcon: { width: 56, height: 56, borderRadius: Radius.lg, justifyContent: 'center', alignItems: 'center' },
-  categoryName: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', maxWidth: 60 },
-  offerBannerContainer: { paddingHorizontal: Spacing.lg, marginTop: Spacing.lg },
-  offerBanner: { borderRadius: Radius.lg, overflow: 'hidden' },
-  offerBannerContent: { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, gap: Spacing.md },
-  offerBannerTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#000' },
-  offerBannerSubtitle: { fontSize: FontSize.sm, color: '#000', opacity: 0.8 },
-  productsList: { gap: Spacing.md, paddingRight: Spacing.sm },
-  productCard: {
-    width: 160, backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg, overflow: 'hidden',
+  adminPillTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.bgSurface, borderRadius: Radius.full,
+    paddingHorizontal: 16, paddingVertical: 11,
     borderWidth: 1, borderColor: Colors.border,
-    ...Shadow.sm,
   },
-  productImageContainer: { position: 'relative', height: 180 },
-  productImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  offerBadge: {
+  searchBarTxt: { flex: 1, fontSize: FontSize.sm, color: Colors.textMuted },
+  // Banner
+  bannerSlide: { width, height: 230 },
+  bannerImg: { width: '100%', height: '100%' },
+  bannerOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.lg,
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+  },
+  bannerLabel: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary, flex: 1 },
+  bannerCTA: { borderRadius: Radius.full, overflow: 'hidden' },
+  bannerCTAGrad: { paddingHorizontal: 18, paddingVertical: 9 },
+  bannerCTATxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  dots: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, gap: 5 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.border },
+  dotActive: { width: 22, backgroundColor: Colors.primary },
+  // Sections
+  section: { paddingHorizontal: Spacing.lg, marginTop: Spacing.xl },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
+  sectionTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionAccent: { width: 3, height: 18, backgroundColor: Colors.primary, borderRadius: Radius.full },
+  sectionTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  seeAllTxt: { fontSize: FontSize.xs, color: Colors.primary },
+  // Categories
+  catRow: { gap: Spacing.sm, paddingRight: Spacing.sm },
+  catItem: { alignItems: 'center', gap: 6, width: 70 },
+  catIcon: { width: 58, height: 58, borderRadius: Radius.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  catName: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', lineHeight: 16 },
+  // Flash banner
+  flashWrap: { marginHorizontal: Spacing.lg, marginTop: Spacing.xl },
+  flashBanner: { borderRadius: Radius.xl, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  flashLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  flashTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  flashSub: { fontSize: FontSize.xs, color: '#0D1E16', opacity: 0.8 },
+  // Product card
+  productCard: {
+    width: CARD_W, backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg, overflow: 'hidden',
+    borderWidth: 1, borderColor: Colors.border, ...Shadow.sm,
+  },
+  cardImgWrap: { height: 190, position: 'relative' },
+  cardImg: { width: '100%', height: '100%' },
+  saleTag: {
     position: 'absolute', top: 8, left: 8,
-    backgroundColor: Colors.error, borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: Colors.error, borderRadius: Radius.sm,
+    paddingHorizontal: 6, paddingVertical: 3,
   },
-  offerBadgeText: { fontSize: FontSize.xs, color: '#fff', fontWeight: FontWeight.bold },
-  newBadge: {
-    position: 'absolute', top: 8, right: 8,
-    backgroundColor: Colors.primary, borderRadius: Radius.sm, paddingHorizontal: 6, paddingVertical: 2,
+  saleTagText: { fontSize: FontSize.xs, color: '#fff', fontWeight: FontWeight.bold },
+  newTag: {
+    position: 'absolute', top: 8, right: 36,
+    backgroundColor: Colors.primary, borderRadius: Radius.sm,
+    paddingHorizontal: 6, paddingVertical: 3,
   },
-  newBadgeText: { fontSize: FontSize.xs, color: '#000', fontWeight: FontWeight.bold },
-  productInfo: { padding: Spacing.sm },
-  productName: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.medium, marginBottom: 4 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: 4 },
-  ratingText: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.medium },
-  soldText: { fontSize: FontSize.xs, color: Colors.textMuted },
-  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  price: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
-  currency: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  originalPrice: { fontSize: FontSize.xs, color: Colors.textMuted, textDecorationLine: 'line-through' },
+  newTagText: { fontSize: FontSize.xs, color: '#0D1E16', fontWeight: FontWeight.bold },
+  favBtn: {
+    position: 'absolute', top: 6, right: 6,
+    backgroundColor: Colors.bg + 'CC', borderRadius: Radius.full,
+    width: 30, height: 30, justifyContent: 'center', alignItems: 'center',
+  },
+  cardBody: { padding: 10, gap: 4 },
+  rtl: { textAlign: 'right' },
+  cardName: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: FontWeight.medium, lineHeight: 18 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingTxt: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.medium },
+  soldTxt: { fontSize: FontSize.xs, color: Colors.textMuted },
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap' },
+  priceTxt: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.primary },
+  currTxt: { fontSize: FontSize.xs, color: Colors.textMuted },
+  origTxt: { fontSize: FontSize.xs, color: Colors.textMuted, textDecorationLine: 'line-through' },
+  // Grid
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  viewMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginTop: Spacing.md, backgroundColor: Colors.primary,
+    borderRadius: Radius.full, paddingVertical: 13,
+  },
+  viewMoreTxt: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  // Footer
+  footerBanner: { marginHorizontal: Spacing.lg, marginTop: Spacing.xl, borderRadius: Radius.xl, overflow: 'hidden' },
+  footerGrad: { alignItems: 'center', paddingVertical: Spacing.xl, gap: 8, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.xl },
+  footerLogo: { width: 60, height: 60, borderRadius: 14 },
+  footerBrand: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 6 },
+  footerTag: { fontSize: FontSize.sm, color: Colors.textMuted },
 });

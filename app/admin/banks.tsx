@@ -1,65 +1,66 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, ScrollView, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
 import { useData } from '@/contexts/DataContext';
+import { useAlert } from '@/template';
 
 export default function AdminBanksScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { language } = useApp();
   const { settings, updateSettings } = useData();
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editAccount, setEditAccount] = useState('');
-  const [editAccountName, setEditAccountName] = useState('');
+  const { showAlert } = useAlert();
+  const isRTL = language === 'ar';
+  const [banks, setBanks] = useState(settings.paymentBanks);
 
-  const banks = settings.paymentBanks;
+  const handleSave = async () => {
+    await updateSettings({ paymentBanks: banks });
+    showAlert(isRTL ? 'تم الحفظ' : 'Saved', '');
+  };
 
-  const saveBank = (id: string) => {
-    const updated = banks.map(b => b.id === id ? { ...b, accountNumber: editAccount, accountName: editAccountName } : b);
-    updateSettings({ paymentBanks: updated });
-    setEditId(null);
+  const updateBank = (i: number, key: string, value: any) => {
+    setBanks(bs => bs.map((b, j) => j === i ? { ...b, [key]: value } : b));
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={24} color={Colors.textPrimary} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>{language === 'ar' ? 'بوابات الدفع' : 'Payment Banks'}</Text>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.title}>{isRTL ? 'البنوك والدفع' : 'Banks & Payment'}</Text>
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}><Text style={styles.saveTxt}>{isRTL ? 'حفظ' : 'Save'}</Text></TouchableOpacity>
       </View>
-      <FlatList
-        data={banks}
-        keyExtractor={i => i.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={styles.bankCard}>
-            <View style={styles.bankHeader}>
-              <MaterialIcons name="account-balance" size={24} color={Colors.primary} />
-              <Text style={styles.bankName}>{language === 'ar' ? item.nameAr : item.nameEn}</Text>
-              <Switch value={item.isActive} onValueChange={v => updateSettings({ paymentBanks: banks.map(b => b.id === item.id ? { ...b, isActive: v } : b) })} trackColor={{ true: Colors.success }} />
+      <ScrollView contentContainerStyle={styles.content}>
+        {banks.map((bank, i) => (
+          <View key={bank.id} style={styles.bankCard}>
+            <View style={styles.bankTop}>
+              <MaterialIcons name="account-balance" size={20} color={Colors.primary} />
+              <Text style={styles.bankId}>{bank.nameAr}</Text>
+              <Switch value={bank.isActive} onValueChange={v => updateBank(i, 'isActive', v)} trackColor={{ false: Colors.border, true: Colors.success }} thumbColor="#fff" />
             </View>
-            {editId === item.id ? (
-              <View style={styles.editSection}>
-                <TextInput style={styles.editInput} value={editAccount} onChangeText={setEditAccount} placeholder={language === 'ar' ? 'رقم الحساب' : 'Account Number'} placeholderTextColor={Colors.textMuted} />
-                <TextInput style={styles.editInput} value={editAccountName} onChangeText={setEditAccountName} placeholder={language === 'ar' ? 'اسم الحساب' : 'Account Name'} placeholderTextColor={Colors.textMuted} />
-                <TouchableOpacity style={styles.saveBtn} onPress={() => saveBank(item.id)}>
-                  <Text style={styles.saveBtnText}>{language === 'ar' ? 'حفظ' : 'Save'}</Text>
-                </TouchableOpacity>
+            {[
+              { k: 'nameAr', l: 'الاسم (عربي)' },
+              { k: 'nameEn', l: 'Name (English)' },
+              { k: 'accountNumber', l: isRTL ? 'رقم الحساب' : 'Account Number' },
+              { k: 'accountName', l: isRTL ? 'اسم الحساب' : 'Account Name' },
+            ].map(f => (
+              <View key={f.k}>
+                <Text style={styles.fieldLabel}>{f.l}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={(bank as any)[f.k]}
+                  onChangeText={v => updateBank(i, f.k, v)}
+                  placeholder={f.l}
+                  placeholderTextColor={Colors.textMuted}
+                />
               </View>
-            ) : (
-              <TouchableOpacity style={styles.accountInfo} onPress={() => { setEditId(item.id); setEditAccount(item.accountNumber); setEditAccountName(item.accountName); }}>
-                <Text style={styles.accountNumber}>{item.accountNumber}</Text>
-                <Text style={styles.accountName}>{item.accountName}</Text>
-                <Text style={styles.editHint}><MaterialIcons name="edit" size={12} color={Colors.primary} /> {language === 'ar' ? 'تعديل' : 'Edit'}</Text>
-              </TouchableOpacity>
-            )}
+            ))}
           </View>
-        )}
-      />
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -67,17 +68,13 @@ export default function AdminBanksScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  list: { padding: Spacing.md, gap: Spacing.md },
-  bankCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.borderGold },
-  bankHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
-  bankName: { flex: 1, fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  accountInfo: { gap: 2 },
-  accountNumber: { fontSize: FontSize.base, color: Colors.primary, fontWeight: FontWeight.medium },
-  accountName: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  editHint: { fontSize: FontSize.xs, color: Colors.primary, marginTop: 4 },
-  editSection: { gap: 8 },
-  editInput: { borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.sm, backgroundColor: Colors.bgInput, paddingHorizontal: Spacing.sm, paddingVertical: 10, fontSize: FontSize.sm, color: Colors.textPrimary },
-  saveBtn: { backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: 10, alignItems: 'center' },
-  saveBtnText: { fontWeight: FontWeight.bold, color: '#000' },
+  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  saveBtn: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 16, paddingVertical: 8 },
+  saveTxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  content: { padding: Spacing.lg, gap: Spacing.md },
+  bankCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, gap: 4 },
+  bankTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  bankId: { flex: 1, fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  fieldLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4, marginBottom: 2 },
+  input: { borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.sm, backgroundColor: Colors.bgInput, paddingHorizontal: 10, paddingVertical: 9, fontSize: FontSize.sm, color: Colors.textPrimary },
 });

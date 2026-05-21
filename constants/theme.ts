@@ -1,49 +1,52 @@
-// DAVA - Luxury Fashion Store Theme
+// DAVA — Design System: Deep Forest Green + Champagne Gold
 export const Colors = {
-  // Primary Brand
-  primary: '#C9A84C',        // Gold
-  primaryDark: '#A07830',    // Dark Gold
-  primaryLight: '#E8C96A',   // Light Gold
-  primaryMuted: 'rgba(201,168,76,0.15)',
+  // Brand
+  primary: '#C9A84C',        // Champagne gold
+  primaryLight: '#E8C97C',
+  primaryDark: '#A07830',
+  primaryMuted: '#C9A84C18',
 
-  // Backgrounds
-  bg: '#0A0A0A',             // Pure Black
-  bgCard: '#111111',         // Card Black
-  bgCardHover: '#1A1A1A',    // Hover Black
-  bgSurface: '#161616',      // Surface
-  bgInput: '#1C1C1C',        // Input Background
-  bgModal: 'rgba(0,0,0,0.85)',
+  // Backgrounds — deep forest green
+  bg: '#0D1E16',
+  bgCard: '#152A1E',
+  bgSurface: '#1C3527',
+  bgInput: '#1A2E22',
+  bgModal: '#112019',
+
+  // Borders
+  border: '#2A4035',
+  borderGold: '#C9A84C55',
+  divider: '#1E3028',
 
   // Text
-  textPrimary: '#FFFFFF',
-  textSecondary: '#A0A0A0',
-  textMuted: '#5A5A5A',
-  textGold: '#C9A84C',
-  textInverse: '#0A0A0A',
+  textPrimary: '#F5EDD8',    // warm cream
+  textSecondary: '#B8CDB8',  // muted sage
+  textMuted: '#6A8A74',
+  textInverse: '#0D1E16',
 
-  // UI
-  border: '#2A2A2A',
-  borderGold: 'rgba(201,168,76,0.4)',
-  divider: '#1E1E1E',
-  
   // Semantic
   success: '#4CAF82',
-  error: '#E05252',
-  warning: '#E0A050',
-  info: '#5090E0',
+  error: '#E05C5C',
+  warning: '#E0A550',
+  info: '#4AAFCF',
 
-  // Overlay
-  overlay: 'rgba(0,0,0,0.7)',
-  overlayLight: 'rgba(0,0,0,0.4)',
+  // Misc
+  overlay: 'rgba(0,0,0,0.6)',
+  transparent: 'transparent',
+
+  // Tab bar
+  tabBg: '#0D1E16',
+  tabActive: '#C9A84C',
+  tabInactive: '#4A6A54',
 };
 
 export const Spacing = {
   xs: 4,
   sm: 8,
   md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
 };
 
 export const Radius = {
@@ -51,7 +54,8 @@ export const Radius = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 24,
+  xl: 20,
+  xxl: 28,
   full: 999,
 };
 
@@ -59,12 +63,10 @@ export const FontSize = {
   xs: 11,
   sm: 13,
   base: 15,
-  md: 16,
-  lg: 18,
+  lg: 17,
   xl: 20,
   xxl: 24,
-  xxxl: 28,
-  display: 34,
+  xxxl: 30,
 };
 
 export const FontWeight = {
@@ -77,24 +79,24 @@ export const FontWeight = {
 
 export const Shadow = {
   sm: {
-    shadowColor: '#C9A84C',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   md: {
-    shadowColor: '#C9A84C',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.4,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 6,
   },
-  lg: {
+  gold: {
     shadowColor: '#C9A84C',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
 };

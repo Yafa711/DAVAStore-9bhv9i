@@ -163,10 +163,24 @@ export const customersService = {
     const { data } = await db().from('customer_profiles').select('*').eq('phone', phone).single();
     return data || null;
   },
+  async getByEmail(email: string) {
+    const { data } = await db().from('customer_profiles').select('*').eq('email', email).single();
+    return data || null;
+  },
+  async createByEmail(c: any) {
+    const { data, error } = await db().from('customer_profiles').insert([{
+      name: c.name,
+      phone: c.phone || '',
+      email: c.email,
+    }]).select().single();
+    if (error) throw error;
+    return data;
+  },
   async create(c: any) {
     const { data, error } = await db().from('customer_profiles').insert([{
       name: c.name,
       phone: c.phone,
+      email: c.email || '',
     }]).select().single();
     if (error) throw error;
     return data;
@@ -189,21 +203,32 @@ export const otpService = {
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
   async store(phone: string, otp: string) {
-    // Invalidate previous OTPs for this phone
     await db().from('otp_verifications').update({ used: true }).eq('phone', phone).eq('used', false);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     const { error } = await db().from('otp_verifications').insert([{ phone, otp, expires_at: expiresAt }]);
+    if (error) throw error;
+  },
+  async storeByEmail(email: string, otp: string) {
+    // use phone field to store email for OTP lookup
+    await db().from('otp_verifications').update({ used: true }).eq('phone', email).eq('used', false);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const { error } = await db().from('otp_verifications').insert([{ phone: email, otp, expires_at: expiresAt }]);
     if (error) throw error;
   },
   async verify(phone: string, otp: string): Promise<boolean> {
     const { data } = await db()
-      .from('otp_verifications')
-      .select('*')
-      .eq('phone', phone)
-      .eq('otp', otp)
-      .eq('used', false)
-      .gt('expires_at', new Date().toISOString())
-      .single();
+      .from('otp_verifications').select('*')
+      .eq('phone', phone).eq('otp', otp).eq('used', false)
+      .gt('expires_at', new Date().toISOString()).single();
+    if (!data) return false;
+    await db().from('otp_verifications').update({ used: true }).eq('id', data.id);
+    return true;
+  },
+  async verifyByEmail(email: string, otp: string): Promise<boolean> {
+    const { data } = await db()
+      .from('otp_verifications').select('*')
+      .eq('phone', email).eq('otp', otp).eq('used', false)
+      .gt('expires_at', new Date().toISOString()).single();
     if (!data) return false;
     await db().from('otp_verifications').update({ used: true }).eq('id', data.id);
     return true;

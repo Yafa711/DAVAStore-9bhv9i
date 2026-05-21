@@ -4,10 +4,6 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider } from '@/contexts/AppContext';
 import { DataProvider } from '@/contexts/DataContext';
-import { I18nManager } from 'react-native';
-
-// Enable RTL support
-I18nManager.allowRTL(true);
 
 export default function RootLayout() {
   return (
@@ -15,14 +11,14 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AppProvider>
           <DataProvider>
-            <StatusBar style="light" backgroundColor="#0A0A0A" />
+            <StatusBar style="light" backgroundColor="#0D1E16" />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="auth/login" />
               <Stack.Screen name="auth/register" />
               <Stack.Screen name="auth/verify" />
               <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="product/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="product/[id]" />
               <Stack.Screen name="checkout/index" />
               <Stack.Screen name="checkout/success" />
               <Stack.Screen name="search/index" />

@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Switch, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, ScrollView, Switch } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '@/constants/theme';
 import { useApp } from '@/contexts/AppContext';
-import { useData, Offer } from '@/contexts/DataContext';
+import { useData } from '@/contexts/DataContext';
 import { useAlert } from '@/template';
+import { CATEGORIES } from '@/constants/config';
 
 export default function AdminOffersScreen() {
   const router = useRouter();
@@ -15,69 +17,74 @@ export default function AdminOffersScreen() {
   const { language } = useApp();
   const { offers, addOffer, updateOffer, deleteOffer } = useData();
   const { showAlert } = useAlert();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ titleAr: '', titleEn: '', descriptionAr: '', descriptionEn: '', image: '', discount: '', isActive: true });
+  const isRTL = language === 'ar';
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState<any>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const handleSave = () => {
-    if (!form.titleAr || !form.discount) {
-      showAlert(language === 'ar' ? 'بيانات ناقصة' : 'Missing Data', '');
-      return;
-    }
-    addOffer({ ...form, id: `offer_${Date.now()}`, discount: Number(form.discount) });
-    setShowForm(false);
-    setForm({ titleAr: '', titleEn: '', descriptionAr: '', descriptionEn: '', image: '', discount: '', isActive: true });
+  const openAdd = () => { setEditing({ titleAr: '', titleEn: '', discount: '', category: 'women', isActive: true }); setEditingId(null); setModal(true); };
+  const openEdit = (o: any) => { setEditing({ ...o }); setEditingId(o.id); setModal(true); };
+  const handleSave = async () => {
+    try {
+      if (editingId) await updateOffer(editingId, { ...editing, discount: parseInt(editing.discount) });
+      else await addOffer({ ...editing, id: `offer_${Date.now()}`, discount: parseInt(editing.discount) });
+      setModal(false);
+    } catch { showAlert(isRTL ? 'خطأ' : 'Error', ''); }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={24} color={Colors.textPrimary} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>{language === 'ar' ? 'العروض' : 'Offers'}</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowForm(!showForm)}><MaterialIcons name={showForm ? 'close' : 'add'} size={22} color="#000" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()}><MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.title}>{isRTL ? 'العروض' : 'Offers'}</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={openAdd}><MaterialIcons name="add" size={20} color="#0D1E16" /></TouchableOpacity>
       </View>
-
-      {showForm ? (
-        <View style={styles.formCard}>
-          {[
-            { key: 'titleAr', label: 'العنوان (عربي)' },
-            { key: 'titleEn', label: 'Title (English)' },
-            { key: 'descriptionAr', label: 'الوصف (عربي)' },
-            { key: 'image', label: language === 'ar' ? 'رابط الصورة' : 'Image URL' },
-            { key: 'discount', label: language === 'ar' ? 'نسبة الخصم %' : 'Discount %', keyboard: 'numeric' },
-          ].map(f => (
-            <TextInput key={f.key} style={styles.input} value={(form as any)[f.key]} onChangeText={v => setForm({ ...form, [f.key]: v })} placeholder={f.label} placeholderTextColor={Colors.textMuted} keyboardType={(f as any).keyboard || 'default'} />
-          ))}
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-            <LinearGradient colors={[Colors.primaryLight, Colors.primary]} style={styles.saveBtnGradient}>
-              <Text style={styles.saveBtnText}>{language === 'ar' ? 'حفظ العرض' : 'Save Offer'}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       <FlatList
         data={offers}
         keyExtractor={i => i.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
           <View style={styles.offerCard}>
-            {item.image ? <Image source={{ uri: item.image }} style={styles.offerImage} /> : null}
-            <View style={styles.offerInfo}>
-              <Text style={styles.offerTitle}>{language === 'ar' ? item.titleAr : item.titleEn}</Text>
-              <Text style={styles.offerDiscount}>{item.discount}% {language === 'ar' ? 'خصم' : 'off'}</Text>
+            <View style={[styles.discBadge]}><Text style={styles.discTxt}>-{item.discount}%</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.offerTitle}>{isRTL ? item.titleAr : item.titleEn}</Text>
+              <Text style={styles.offerCat}>{item.category}</Text>
             </View>
-            <View style={styles.offerActions}>
-              <Switch value={item.isActive} onValueChange={v => updateOffer(item.id, { isActive: v })} trackColor={{ true: Colors.success }} />
-              <TouchableOpacity onPress={() => showAlert(language === 'ar' ? 'حذف العرض' : 'Delete Offer', '', [
-                { text: language === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
-                { text: language === 'ar' ? 'حذف' : 'Delete', style: 'destructive', onPress: () => deleteOffer(item.id) },
-              ])}>
-                <MaterialIcons name="delete" size={20} color={Colors.error} />
-              </TouchableOpacity>
-            </View>
+            <View style={[styles.statusDot, { backgroundColor: item.isActive ? Colors.success : Colors.error }]} />
+            <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}><MaterialIcons name="edit" size={15} color={Colors.primary} /></TouchableOpacity>
+            <TouchableOpacity style={styles.delBtn} onPress={() => { showAlert(isRTL ? 'حذف؟' : 'Delete?', '', [{ text: isRTL ? 'إلغاء' : 'Cancel', style: 'cancel' }, { text: isRTL ? 'حذف' : 'Delete', style: 'destructive', onPress: () => deleteOffer(item.id) }]); }}><MaterialIcons name="delete-outline" size={15} color={Colors.error} /></TouchableOpacity>
           </View>
         )}
       />
+      <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top }]}>
+          <View style={styles.modalHead}>
+            <TouchableOpacity onPress={() => setModal(false)}><MaterialIcons name="close" size={22} color={Colors.textPrimary} /></TouchableOpacity>
+            <Text style={styles.modalTitle}>{editingId ? (isRTL ? 'تعديل' : 'Edit') : (isRTL ? 'عرض جديد' : 'New Offer')}</Text>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}><Text style={styles.saveTxt}>{isRTL ? 'حفظ' : 'Save'}</Text></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <Text style={styles.label}>{isRTL ? 'العنوان (عربي)' : 'Title (Arabic)'}</Text>
+            <TextInput style={[styles.input, styles.rtl]} value={editing.titleAr} onChangeText={v => setEditing((e: any) => ({ ...e, titleAr: v }))} placeholder="عنوان العرض" placeholderTextColor={Colors.textMuted} />
+            <Text style={styles.label}>Title (English)</Text>
+            <TextInput style={styles.input} value={editing.titleEn} onChangeText={v => setEditing((e: any) => ({ ...e, titleEn: v }))} placeholder="Offer title" placeholderTextColor={Colors.textMuted} />
+            <Text style={styles.label}>{isRTL ? 'نسبة الخصم %' : 'Discount %'}</Text>
+            <TextInput style={styles.input} value={String(editing.discount || '')} onChangeText={v => setEditing((e: any) => ({ ...e, discount: v }))} keyboardType="number-pad" placeholder="0" placeholderTextColor={Colors.textMuted} />
+            <Text style={styles.label}>{isRTL ? 'التصنيف' : 'Category'}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {CATEGORIES.map(c => (
+                <TouchableOpacity key={c.id} style={[styles.catChip, editing.category === c.id && styles.catChipActive]} onPress={() => setEditing((e: any) => ({ ...e, category: c.id }))}>
+                  <Text style={[styles.catTxt, editing.category === c.id && styles.catTxtActive]}>{isRTL ? c.nameAr : c.nameEn}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.togRow}>
+              <Text style={styles.togLabel}>{isRTL ? 'مفعّل' : 'Active'}</Text>
+              <Switch value={!!editing.isActive} onValueChange={v => setEditing((e: any) => ({ ...e, isActive: v }))} trackColor={{ false: Colors.border, true: Colors.success }} thumbColor="#fff" />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -85,18 +92,30 @@ export default function AdminOffersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  addBtn: { backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: 6 },
-  formCard: { margin: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.borderGold, gap: 8 },
-  input: { borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.sm, backgroundColor: Colors.bgInput, paddingHorizontal: Spacing.sm, paddingVertical: 10, fontSize: FontSize.sm, color: Colors.textPrimary },
-  saveBtn: { borderRadius: Radius.sm, overflow: 'hidden' },
-  saveBtnGradient: { paddingVertical: 12, alignItems: 'center' },
-  saveBtnText: { fontWeight: FontWeight.bold, color: '#000', fontSize: FontSize.base },
+  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  addBtn: { backgroundColor: Colors.primary, borderRadius: Radius.full, width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
   list: { padding: Spacing.md, gap: Spacing.sm },
-  offerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
-  offerImage: { width: 80, height: 70, resizeMode: 'cover' },
-  offerInfo: { flex: 1, padding: Spacing.sm },
+  offerCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border },
+  discBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
+  discTxt: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: '#0D1E16' },
   offerTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  offerDiscount: { fontSize: FontSize.sm, color: Colors.primary, marginTop: 2 },
-  offerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: Spacing.sm },
+  offerCat: { fontSize: FontSize.xs, color: Colors.textMuted },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  editBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primary + '20', justifyContent: 'center', alignItems: 'center' },
+  delBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.error + '20', justifyContent: 'center', alignItems: 'center' },
+  modal: { flex: 1, backgroundColor: Colors.bg },
+  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  modalTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  saveBtn: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 16, paddingVertical: 8 },
+  saveTxt: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#0D1E16' },
+  modalContent: { padding: Spacing.lg, gap: 4 },
+  label: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 4, marginTop: 8 },
+  input: { borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, backgroundColor: Colors.bgInput, paddingHorizontal: 12, paddingVertical: 11, fontSize: FontSize.sm, color: Colors.textPrimary },
+  rtl: { textAlign: 'right' },
+  catChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, backgroundColor: Colors.bgSurface, borderWidth: 1, borderColor: Colors.border, marginRight: 6, marginTop: 4 },
+  catChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  catTxt: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  catTxtActive: { color: '#0D1E16', fontWeight: FontWeight.bold },
+  togRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  togLabel: { fontSize: FontSize.base, color: Colors.textPrimary },
 });

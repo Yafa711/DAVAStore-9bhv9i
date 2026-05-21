@@ -3,64 +3,58 @@ import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, View, Text, StyleSheet } from 'react-native';
 import { useApp } from '@/contexts/AppContext';
-import { Colors, FontSize, FontWeight } from '@/constants/theme';
+import { Colors, FontSize, FontWeight, Radius } from '@/constants/theme';
 import { t } from '@/constants/i18n';
-
-function TabBadge({ count }: { count: number }) {
-  if (count === 0) return null;
-  return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
-    </View>
-  );
-}
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { language, cartCount, user } = useApp();
-
-  const tabBarStyle = {
-    height: Platform.select({ ios: insets.bottom + 60, android: insets.bottom + 60, default: 70 }),
-    paddingTop: 8,
-    paddingBottom: Platform.select({ ios: insets.bottom + 8, android: insets.bottom + 8, default: 8 }),
-    paddingHorizontal: 16,
-    backgroundColor: '#0A0A0A',
-    borderTopWidth: 1,
-    borderTopColor: '#2A2A2A',
-  };
+  const { language, cartCount } = useApp();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle,
+        tabBarStyle: {
+          height: Platform.select({ ios: insets.bottom + 58, android: insets.bottom + 58, default: 68 }),
+          paddingTop: 8,
+          paddingBottom: Platform.select({ ios: insets.bottom + 6, android: insets.bottom + 6, default: 8 }),
+          backgroundColor: Colors.tabBg,
+          borderTopWidth: 1,
+          borderTopColor: Colors.border,
+        },
         tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: '#555',
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+        tabBarInactiveTintColor: Colors.tabInactive,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: FontWeight.semibold },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: t('home', language),
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="home" size={size} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name={focused ? 'home' : 'home'} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="categories"
         options={{
           title: t('categories', language),
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="category" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <MaterialIcons name="grid-view" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="cart"
         options={{
           title: t('cart', language),
-          tabBarIcon: ({ color, size }) => (
-            <View>
-              <MaterialIcons name="shopping-cart" size={size} color={color} />
-              <TabBadge count={cartCount} />
+          tabBarIcon: ({ color }) => (
+            <View style={{ position: 'relative' }}>
+              <MaterialIcons name="shopping-bag" size={22} color={color} />
+              {cartCount > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeTxt}>{cartCount > 9 ? '9+' : cartCount}</Text>
+                </View>
+              ) : null}
             </View>
           ),
         }}
@@ -69,14 +63,14 @@ export default function TabLayout() {
         name="orders"
         options={{
           title: t('orders', language),
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="receipt-long" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <MaterialIcons name="receipt-long" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('profile', language),
-          tabBarIcon: ({ color, size }) => <MaterialIcons name="person" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <MaterialIcons name="person-outline" size={22} color={color} />,
         }}
       />
     </Tabs>
@@ -85,10 +79,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   badge: {
-    position: 'absolute', top: -4, right: -8,
-    backgroundColor: Colors.error, borderRadius: 10,
-    minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 4,
+    position: 'absolute', top: -5, right: -9,
+    backgroundColor: Colors.error, borderRadius: Radius.full,
+    minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
   },
-  badgeText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+  badgeTxt: { fontSize: 9, color: '#fff', fontWeight: FontWeight.bold },
 });

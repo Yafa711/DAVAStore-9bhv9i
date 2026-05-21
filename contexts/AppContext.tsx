@@ -4,6 +4,7 @@ import { Language } from '@/constants/i18n';
 
 interface User {
   id: string;
+  email: string;
   phone: string;
   name: string;
   isAdmin: boolean;
@@ -60,27 +61,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadStoredData = async () => {
     try {
-      const [storedLang, storedUser, storedCart, storedSearch, storedFavs] = await Promise.all([
-        AsyncStorage.getItem('dava_language'),
+      const [l, u, c, s, f] = await Promise.all([
+        AsyncStorage.getItem('dava_lang'),
         AsyncStorage.getItem('dava_user'),
         AsyncStorage.getItem('dava_cart'),
-        AsyncStorage.getItem('dava_search_history'),
-        AsyncStorage.getItem('dava_favorites'),
+        AsyncStorage.getItem('dava_search'),
+        AsyncStorage.getItem('dava_favs'),
       ]);
-      if (storedLang) setLanguageState(storedLang as Language);
-      if (storedUser) setUserState(JSON.parse(storedUser));
-      if (storedCart) setCart(JSON.parse(storedCart));
-      if (storedSearch) setSearchHistory(JSON.parse(storedSearch));
-      if (storedFavs) setFavorites(JSON.parse(storedFavs));
+      if (l) setLanguageState(l as Language);
+      if (u) setUserState(JSON.parse(u));
+      if (c) setCart(JSON.parse(c));
+      if (s) setSearchHistory(JSON.parse(s));
+      if (f) setFavorites(JSON.parse(f));
     } catch {}
-    finally {
-      setAuthLoading(false);
-    }
+    finally { setAuthLoading(false); }
   };
 
   const setLanguage = async (lang: Language) => {
     setLanguageState(lang);
-    await AsyncStorage.setItem('dava_language', lang);
+    await AsyncStorage.setItem('dava_lang', lang);
   };
 
   const setUser = async (u: User | null) => {
@@ -91,77 +90,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addToCart = (item: CartItem) => {
     setCart(prev => {
-      const existing = prev.find(i =>
-        i.productId === item.productId && i.size === item.size && i.color === item.color
-      );
-      const updated = existing
-        ? prev.map(i =>
-            i.productId === item.productId && i.size === item.size && i.color === item.color
-              ? { ...i, quantity: i.quantity + item.quantity }
-              : i
-          )
+      const ex = prev.find(i => i.productId === item.productId && i.size === item.size && i.color === item.color);
+      const upd = ex
+        ? prev.map(i => i.productId === item.productId && i.size === item.size && i.color === item.color
+            ? { ...i, quantity: i.quantity + item.quantity } : i)
         : [...prev, item];
-      AsyncStorage.setItem('dava_cart', JSON.stringify(updated));
-      return updated;
+      AsyncStorage.setItem('dava_cart', JSON.stringify(upd));
+      return upd;
     });
   };
 
-  const removeFromCart = (productId: string, size: string, color: string) => {
+  const removeFromCart = (pid: string, size: string, color: string) => {
     setCart(prev => {
-      const updated = prev.filter(i =>
-        !(i.productId === productId && i.size === size && i.color === color)
-      );
-      AsyncStorage.setItem('dava_cart', JSON.stringify(updated));
-      return updated;
+      const upd = prev.filter(i => !(i.productId === pid && i.size === size && i.color === color));
+      AsyncStorage.setItem('dava_cart', JSON.stringify(upd));
+      return upd;
     });
   };
 
-  const updateCartQuantity = (productId: string, size: string, color: string, quantity: number) => {
+  const updateCartQuantity = (pid: string, size: string, color: string, qty: number) => {
     setCart(prev => {
-      const updated = quantity <= 0
-        ? prev.filter(i => !(i.productId === productId && i.size === size && i.color === color))
-        : prev.map(i =>
-            i.productId === productId && i.size === size && i.color === color
-              ? { ...i, quantity }
-              : i
-          );
-      AsyncStorage.setItem('dava_cart', JSON.stringify(updated));
-      return updated;
+      const upd = qty <= 0
+        ? prev.filter(i => !(i.productId === pid && i.size === size && i.color === color))
+        : prev.map(i => i.productId === pid && i.size === size && i.color === color ? { ...i, quantity: qty } : i);
+      AsyncStorage.setItem('dava_cart', JSON.stringify(upd));
+      return upd;
     });
   };
 
-  const clearCart = () => {
-    setCart([]);
-    AsyncStorage.removeItem('dava_cart');
-  };
+  const clearCart = () => { setCart([]); AsyncStorage.removeItem('dava_cart'); };
 
-  const addSearchHistory = (query: string) => {
-    if (!query.trim()) return;
+  const addSearchHistory = (q: string) => {
+    if (!q.trim()) return;
     setSearchHistory(prev => {
-      const filtered = prev.filter(q => q !== query);
-      const updated = [query, ...filtered].slice(0, 50);
-      AsyncStorage.setItem('dava_search_history', JSON.stringify(updated));
-      return updated;
+      const upd = [q, ...prev.filter(x => x !== q)].slice(0, 50);
+      AsyncStorage.setItem('dava_search', JSON.stringify(upd));
+      return upd;
     });
   };
 
-  const toggleFavorite = (productId: string) => {
+  const toggleFavorite = (id: string) => {
     setFavorites(prev => {
-      const updated = prev.includes(productId)
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId];
-      AsyncStorage.setItem('dava_favorites', JSON.stringify(updated));
-      return updated;
+      const upd = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      AsyncStorage.setItem('dava_favs', JSON.stringify(upd));
+      return upd;
     });
   };
 
-  const logout = () => {
-    setUserState(null);
-    AsyncStorage.removeItem('dava_user');
-  };
+  const logout = () => { setUserState(null); AsyncStorage.removeItem('dava_user'); };
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   return (
     <AppContext.Provider value={{
@@ -180,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 }
 
 export function useApp() {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 }
